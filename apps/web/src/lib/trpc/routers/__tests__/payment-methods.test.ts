@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
+import { transactions } from "@/lib/db/schema";
 import { createTestDb, makeUser, SCHEMA_DDL } from "./helpers";
 
 const { pg, db } = createTestDb();
@@ -25,24 +26,25 @@ describe("paymentMethods.list", () => {
 		expect(list.length).toBe(0);
 	});
 
-	it("returns ALL methods regardless of user — no user_uid filter", async () => {
+	it("returns only current user methods", async () => {
 		await caller.create({ name: "Cash" });
 		await caller.create({ name: "Card" });
 
 		const otherCaller = createCallerFactory(paymentMethodsRouter)({
 			user: makeUser("other-user"),
 		});
+		await otherCaller.create({ name: "Transfer" });
 
 		const myList = await caller.list();
 		const otherList = await otherCaller.list();
 
 		expect(myList.length).toBe(2);
-		expect(otherList.length).toBe(2);
+		expect(otherList.length).toBe(1);
 
 		const myNames = myList.map((pm) => pm.name).sort();
 		const otherNames = otherList.map((pm) => pm.name).sort();
 		expect(myNames).toEqual(["Card", "Cash"]);
-		expect(otherNames).toEqual(["Card", "Cash"]);
+		expect(otherNames).toEqual(["Transfer"]);
 	});
 });
 
@@ -122,5 +124,21 @@ describe("paymentMethods.delete", () => {
 
 		const list = await caller.list();
 		expect(list.some((x) => x.id === pm.id)).toBe(false);
+	});
+
+	it("blocks delete when transactions use payment method", async () => {
+		const pm = await caller.create({ name: "UsedMethod" });
+		await db.insert(transactions).values({
+			description: "Payment",
+			amount: 1000,
+			type: "income",
+			status: "completed",
+			payment_method_id: pm.id,
+			user_uid: "user-1",
+		});
+
+		await expect(caller.delete({ id: pm.id })).rejects.toThrow(
+			"Payment method already used in transactions",
+		);
 	});
 });

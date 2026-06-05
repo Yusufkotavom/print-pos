@@ -9,7 +9,12 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@finopenpos/ui/components/card";
-import { type Column, DataTable } from "@finopenpos/ui/components/data-table";
+import {
+	type Column,
+	DataTable,
+	TableActionButton,
+	TableActions,
+} from "@finopenpos/ui/components/data-table";
 import {
 	Dialog,
 	DialogContent,
@@ -29,10 +34,17 @@ import {
 import { Skeleton } from "@finopenpos/ui/components/skeleton";
 import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
-import { FolderTreeIcon, Loader2Icon, PlusIcon } from "lucide-react";
+import {
+	FilePenIcon,
+	FolderTreeIcon,
+	Loader2Icon,
+	PlusIcon,
+	TrashIcon,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { z } from "zod/v4";
+import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/router";
@@ -48,21 +60,46 @@ export default function CategoriesPage() {
 	const t = useTranslations("categories");
 	const tc = useTranslations("common");
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
+	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+	const [editingId, setEditingId] = useState<number | null>(null);
+	const [deleteId, setDeleteId] = useState<number | null>(null);
 
 	const categorySchema = z.object({
 		name: z.string().min(1, t("nameRequired")),
 		type: z.enum(["income", "expense"]),
 	});
 
+	const isEditing = editingId !== null;
+	const invalidateKeys =
+		trpc.transactionCategories.list.queryOptions().queryKey;
+
 	const createMutation = useCrudMutation({
 		mutationOptions: trpc.transactionCategories.create.mutationOptions(),
-		invalidateKeys: trpc.transactionCategories.list.queryOptions().queryKey,
+		invalidateKeys,
 		successMessage: t("created"),
 		errorMessage: t("createError"),
 		onSuccess: () => {
 			setIsDialogOpen(false);
 			form.reset();
 		},
+	});
+
+	const updateMutation = useCrudMutation({
+		mutationOptions: trpc.transactionCategories.update.mutationOptions(),
+		invalidateKeys,
+		successMessage: t("updated"),
+		errorMessage: t("updateError"),
+		onSuccess: () => {
+			setIsDialogOpen(false);
+			form.reset();
+		},
+	});
+
+	const deleteMutation = useCrudMutation({
+		mutationOptions: trpc.transactionCategories.delete.mutationOptions(),
+		invalidateKeys,
+		successMessage: t("deleted"),
+		errorMessage: t("deleteError"),
 	});
 
 	const form = useForm({
@@ -73,8 +110,35 @@ export default function CategoriesPage() {
 		validators: {
 			onSubmit: categorySchema,
 		},
-		onSubmit: ({ value }) => createMutation.mutate(value),
+		onSubmit: ({ value }) => {
+			if (isEditing) {
+				updateMutation.mutate({ id: editingId, ...value });
+			} else {
+				createMutation.mutate(value);
+			}
+		},
 	});
+
+	const openCreate = () => {
+		setEditingId(null);
+		form.reset();
+		setIsDialogOpen(true);
+	};
+
+	const openEdit = (category: Category) => {
+		setEditingId(category.id);
+		form.setFieldValue("name", category.name);
+		form.setFieldValue("type", category.type as CategoryType);
+		setIsDialogOpen(true);
+	};
+
+	const handleDelete = () => {
+		if (deleteId !== null) {
+			deleteMutation.mutate({ id: deleteId });
+			setIsDeleteOpen(false);
+			setDeleteId(null);
+		}
+	};
 
 	const columns: Column<Category>[] = [
 		{ key: "name", header: tc("name"), sortable: true },
@@ -86,6 +150,29 @@ export default function CategoriesPage() {
 				<Badge variant={row.type as CategoryType}>
 					{row.type === "income" ? tc("income") : tc("expense")}
 				</Badge>
+			),
+		},
+		{
+			key: "actions",
+			header: tc("actions"),
+			headerClassName: "w-[100px]",
+			render: (row) => (
+				<TableActions>
+					<TableActionButton
+						onClick={() => openEdit(row)}
+						icon={<FilePenIcon className="h-4 w-4" />}
+						label={tc("edit")}
+					/>
+					<TableActionButton
+						variant="danger"
+						onClick={() => {
+							setDeleteId(row.id);
+							setIsDeleteOpen(true);
+						}}
+						icon={<TrashIcon className="h-4 w-4" />}
+						label={tc("delete")}
+					/>
+				</TableActions>
 			),
 		},
 	];
@@ -114,7 +201,7 @@ export default function CategoriesPage() {
 						<CardTitle>{t("title")}</CardTitle>
 						<CardDescription>{t("subtitle")}</CardDescription>
 					</div>
-					<Button size="sm" onClick={() => setIsDialogOpen(true)}>
+					<Button size="sm" onClick={openCreate}>
 						<PlusIcon className="mr-2 h-4 w-4" />
 						{t("addNew")}
 					</Button>
@@ -138,7 +225,9 @@ export default function CategoriesPage() {
 			>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>{t("addNew")}</DialogTitle>
+						<DialogTitle>
+							{isEditing ? t("editCategory") : t("addNew")}
+						</DialogTitle>
 					</DialogHeader>
 					<form
 						onSubmit={(e) => {
@@ -200,8 +289,11 @@ export default function CategoriesPage() {
 							>
 								{tc("cancel")}
 							</Button>
-							<Button type="submit" disabled={createMutation.isPending}>
-								{createMutation.isPending && (
+							<Button
+								type="submit"
+								disabled={createMutation.isPending || updateMutation.isPending}
+							>
+								{(createMutation.isPending || updateMutation.isPending) && (
 									<Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
 								)}
 								{tc("save")}
@@ -210,6 +302,13 @@ export default function CategoriesPage() {
 					</form>
 				</DialogContent>
 			</Dialog>
+
+			<DeleteConfirmationDialog
+				open={isDeleteOpen}
+				onOpenChange={setIsDeleteOpen}
+				onConfirm={handleDelete}
+				description={t("deleteMessage")}
+			/>
 		</Card>
 	);
 }

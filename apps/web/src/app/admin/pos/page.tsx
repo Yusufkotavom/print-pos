@@ -19,21 +19,17 @@ import {
 import { Input } from "@finopenpos/ui/components/input";
 import { Label } from "@finopenpos/ui/components/label";
 import { Skeleton } from "@finopenpos/ui/components/skeleton";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@finopenpos/ui/components/table";
+import { Textarea } from "@finopenpos/ui/components/textarea";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	CheckCircle2Icon,
 	FileTextIcon,
+	LayoutGridIcon,
+	ListIcon,
 	Loader2Icon,
 	MinusIcon,
+	PackageIcon,
 	PlusCircle,
 	PlusIcon,
 	PrinterIcon,
@@ -45,6 +41,8 @@ import { useLocale, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod/v4";
+import { FormattedNumberInput } from "@/components/formatted-number-input";
+import { PaymentDialog } from "@/components/payment-dialog";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
@@ -62,7 +60,6 @@ type POSProduct = Pick<
 > & {
 	category: string;
 	quantity: number;
-	note?: string;
 };
 
 type SuccessOrder = {
@@ -74,6 +71,7 @@ type SuccessOrder = {
 	payment_status: string;
 	customer: { id: number; name: string; phone?: string } | null;
 	items: POSProduct[];
+	note?: string | null;
 	paymentMethodName?: string;
 };
 
@@ -108,6 +106,7 @@ export default function POSPage() {
 	const loading = loadingProducts || loadingCustomers || loadingMethods;
 
 	const [successOrder, setSuccessOrder] = useState<SuccessOrder | null>(null);
+	const [paymentOrder, setPaymentOrder] = useState<SuccessOrder | null>(null);
 
 	const { data: companySettings } = useQuery(
 		trpc.companySettings.get.queryOptions(),
@@ -118,8 +117,7 @@ export default function POSPage() {
 			onSuccess: (order) => {
 				queryClient.invalidateQueries(trpc.orders.list.queryOptions());
 				queryClient.invalidateQueries(trpc.products.list.queryOptions());
-				toast.success(tOrders("createdSuccessfully"));
-				setSuccessOrder({
+				const createdOrder = {
 					id: order.id,
 					order_number: order.order_number,
 					created_at: order.created_at,
@@ -130,14 +128,39 @@ export default function POSPage() {
 						? { ...selectedCustomer, phone: selectedCustomerPhone }
 						: null,
 					items: [...selectedProducts],
-					paymentMethodName: paymentMethod?.name,
-				});
+					note: orderNote,
+				};
+				toast.success(tOrders("createdSuccessfully"));
+				setPaymentOrder(createdOrder);
+				setIsCartOpen(false);
 				setSelectedProducts([]);
 				setSelectedCustomer(null);
-				setPaymentMethod(null);
-				setPaidAmount("");
+				setOrderNote("");
 			},
 			onError: (err) => toast.error(err.message || tOrders("createError")),
+		}),
+	);
+
+	const receivePaymentMutation = useMutation(
+		trpc.orders.receivePayment.mutationOptions({
+			onSuccess: (order, variables) => {
+				queryClient.invalidateQueries(trpc.orders.list.queryOptions());
+				const selectedMethod = paymentMethods.find(
+					(method) => method.id === variables.paymentMethodId,
+				);
+				setSuccessOrder(
+					paymentOrder
+						? {
+								...paymentOrder,
+								paid_amount: order.paid_amount,
+								payment_status: order.payment_status,
+								paymentMethodName: selectedMethod?.name,
+							}
+						: null,
+				);
+				setPaymentOrder(null);
+			},
+			onError: (err) => toast.error(err.message || tOrders("paymentError")),
 		}),
 	);
 
@@ -155,16 +178,16 @@ export default function POSPage() {
 	);
 
 	const [selectedProducts, setSelectedProducts] = useState<POSProduct[]>([]);
-	const [paymentMethod, setPaymentMethod] = useState<{
-		id: number;
-		name: string;
-	} | null>(null);
-	const [paidAmount, setPaidAmount] = useState("");
+
 	const [selectedCustomer, setSelectedCustomer] = useState<{
 		id: number;
 		name: string;
 	} | null>(null);
 	const [productSearch, setProductSearch] = useState("");
+	const [selectedCategory, setSelectedCategory] = useState("all");
+	const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+	const [orderNote, setOrderNote] = useState("");
+	const [isCartOpen, setIsCartOpen] = useState(false);
 	const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false);
 	const selectedCustomerPhone = selectedCustomer
 		? customers.find((customer) => customer.id === selectedCustomer.id)?.phone
@@ -174,7 +197,6 @@ export default function POSPage() {
 			? `${selectedCustomer.name} — ${selectedCustomerPhone}`
 			: selectedCustomer.name
 		: "";
-	const selectedPaymentMethodLabel = paymentMethod?.name ?? "";
 
 	const customerForm = useForm({
 		defaultValues: {
@@ -197,15 +219,25 @@ export default function POSPage() {
 		},
 	});
 
+	const productCategories = useMemo(() => {
+		const names = products
+			.map((product) => product.category)
+			.filter((category): category is string => Boolean(category));
+		return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+	}, [products]);
+
 	const filteredProducts = useMemo(() => {
-		if (!productSearch.trim()) return products;
-		const q = productSearch.toLowerCase();
-		return products.filter(
-			(p) =>
-				p.name.toLowerCase().includes(q) ||
-				(p.category ?? "").toLowerCase().includes(q),
-		);
-	}, [products, productSearch]);
+		const q = productSearch.toLowerCase().trim();
+		return products.filter((product) => {
+			const matchesCategory =
+				selectedCategory === "all" || product.category === selectedCategory;
+			const matchesSearch =
+				!q ||
+				product.name.toLowerCase().includes(q) ||
+				(product.category ?? "").toLowerCase().includes(q);
+			return matchesCategory && matchesSearch;
+		});
+	}, [products, productSearch, selectedCategory]);
 
 	const handleSelectProduct = (productId: number | string) => {
 		const product = products.find((p) => p.id === productId);
@@ -249,7 +281,6 @@ export default function POSPage() {
 					wholesale_min_qty: product.wholesale_min_qty,
 					category: product.category ?? "",
 					quantity: 1,
-					note: "",
 				},
 			]);
 		}
@@ -258,11 +289,6 @@ export default function POSPage() {
 	const handleSelectCustomer = (customerId: number | string) => {
 		const customer = customers.find((c) => c.id === customerId);
 		if (customer) setSelectedCustomer(customer);
-	};
-
-	const handleSelectPaymentMethod = (paymentMethodId: number | string) => {
-		const method = paymentMethods.find((pm) => pm.id === paymentMethodId);
-		if (method) setPaymentMethod(method);
 	};
 
 	const handleQuantityChange = (productId: number, delta: number) => {
@@ -297,22 +323,11 @@ export default function POSPage() {
 		);
 	};
 
-	const handlePriceChange = (productId: number, newPriceString: string) => {
-		const parsed = Number.parseFloat(newPriceString);
-		const newPrice = Number.isNaN(parsed) ? 0 : parsed * 100;
+	const handlePriceChange = (productId: number, newPrice: number) => {
 		setSelectedProducts((prev) =>
 			prev.map((p) => {
 				if (p.id !== productId) return p;
 				return { ...p, price: newPrice };
-			}),
-		);
-	};
-
-	const handleNoteChange = (productId: number, newNote: string) => {
-		setSelectedProducts((prev) =>
-			prev.map((p) => {
-				if (p.id !== productId) return p;
-				return { ...p, note: newNote };
 			}),
 		);
 	};
@@ -325,28 +340,19 @@ export default function POSPage() {
 		(sum, product) => sum + product.price * product.quantity,
 		0,
 	);
-	const parsedPaidAmount = paidAmount.trim()
-		? Math.round(Number.parseFloat(paidAmount) * 100)
-		: total;
-	const canCreate =
-		selectedProducts.length > 0 &&
-		selectedCustomer &&
-		paymentMethod &&
-		parsedPaidAmount >= 0 &&
-		parsedPaidAmount <= total;
+	const canCreate = selectedProducts.length > 0 && selectedCustomer;
 
 	const handleCreateOrder = () => {
-		if (!selectedCustomer || !paymentMethod || !canCreate) return;
+		if (!selectedCustomer || !canCreate) return;
 		createOrderMutation.mutate({
 			customerId: selectedCustomer.id,
-			paymentMethodId: paymentMethod.id,
 			products: selectedProducts.map((p) => ({
 				id: p.id,
 				quantity: p.quantity,
 				price: p.price,
-				note: p.note,
 			})),
-			paidAmount: parsedPaidAmount,
+			note: orderNote,
+			paidAmount: 0,
 			total,
 		});
 	};
@@ -383,228 +389,311 @@ export default function POSPage() {
 		);
 	}
 
+	const cartPanel = (
+		<Card className="h-fit lg:sticky lg:top-4">
+			<CardHeader>
+				<CardTitle>{t("createOrder")}</CardTitle>
+			</CardHeader>
+			<CardContent className="space-y-4">
+				{selectedProducts.length === 0 ? (
+					<div className="flex h-32 items-center justify-center text-muted-foreground text-sm">
+						{t("selectProducts")}
+					</div>
+				) : (
+					<div className="space-y-3">
+						{selectedProducts.map((product) => {
+							const source = products.find((p) => p.id === product.id);
+							return (
+								<div key={product.id} className="rounded-lg border p-3">
+									<div className="flex items-start justify-between gap-3">
+										<div className="min-w-0">
+											<div className="truncate font-medium text-sm">
+												{product.name}
+											</div>
+											<div className="text-muted-foreground text-xs">
+												{formatCurrency(product.price, locale)}
+											</div>
+										</div>
+										<Button
+											variant="ghost"
+											size="icon"
+											className="h-7 w-7 shrink-0"
+											onClick={() => handleRemoveProduct(product.id)}
+										>
+											<Trash2Icon className="h-4 w-4" />
+											<span className="sr-only">{tc("remove")}</span>
+										</Button>
+									</div>
+									<div className="mt-3 flex items-center justify-between gap-3">
+										<div className="flex items-center gap-1">
+											<Button
+												size="icon"
+												variant="outline"
+												className="h-8 w-8"
+												onClick={() => handleQuantityChange(product.id, -1)}
+												disabled={product.quantity <= 1}
+											>
+												<MinusIcon className="h-3 w-3" />
+											</Button>
+											<span className="w-8 text-center font-medium tabular-nums">
+												{product.quantity}
+											</span>
+											<Button
+												size="icon"
+												variant="outline"
+												className="h-8 w-8"
+												onClick={() => handleQuantityChange(product.id, 1)}
+												disabled={
+													source?.product_type === "product"
+														? product.quantity >= source.in_stock
+														: false
+												}
+											>
+												<PlusIcon className="h-3 w-3" />
+											</Button>
+										</div>
+										<div className="font-semibold text-sm">
+											{formatCurrency(product.quantity * product.price, locale)}
+										</div>
+									</div>
+									<div className="mt-3 flex items-center gap-2">
+										<span className="text-muted-foreground text-xs">Rp</span>
+										<FormattedNumberInput
+											className="h-8"
+											value={product.price / 100}
+											onValueChange={(value) =>
+												handlePriceChange(product.id, (value ?? 0) * 100)
+											}
+										/>
+									</div>
+								</div>
+							);
+						})}
+					</div>
+				)}
+				{selectedProducts.length > 0 && (
+					<div className="space-y-2">
+						<Label htmlFor="order-note">{tc("description")}</Label>
+						<Textarea
+							id="order-note"
+							value={orderNote}
+							onChange={(event) => setOrderNote(event.target.value)}
+							rows={4}
+						/>
+					</div>
+				)}
+				<div className="border-t pt-4">
+					<div className="mb-3 flex items-center justify-between">
+						<span className="font-medium">{tc("total")}</span>
+						<strong className="text-xl">{formatCurrency(total, locale)}</strong>
+					</div>
+					<Button
+						onClick={handleCreateOrder}
+						disabled={!canCreate || createOrderMutation.isPending}
+						size="lg"
+						className="w-full"
+					>
+						{createOrderMutation.isPending && (
+							<Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+						)}
+						{t("createOrder")}
+					</Button>
+				</div>
+			</CardContent>
+		</Card>
+	);
+
 	return (
-		<div className="mx-auto w-full max-w-4xl">
-			<Card className="mb-4">
-				<CardHeader>
-					<CardTitle>{t("saleDetails")}</CardTitle>
-				</CardHeader>
-				<CardContent className="flex flex-col gap-3 sm:flex-row sm:gap-4">
-					<div className="flex flex-1 gap-2">
-						<div className="min-w-0 flex-1">
-							<Combobox
-								items={customers.map((customer) => ({
-									id: customer.id,
-									name: customer.phone
-										? `${customer.name} — ${customer.phone}`
-										: customer.name,
-								}))}
-								placeholder={t("selectCustomer")}
-								value={selectedCustomerLabel}
-								onSelect={handleSelectCustomer}
-							/>
-						</div>
-						<Button
-							type="button"
-							variant="outline"
-							size="icon"
-							onClick={() => setIsCustomerDialogOpen(true)}
-						>
-							<PlusCircle className="h-4 w-4" />
-							<span className="sr-only">{tCustomers("addCustomer")}</span>
-						</Button>
-					</div>
-					<div className="flex-1">
-						<Combobox
-							items={paymentMethods}
-							placeholder={t("selectPaymentMethod")}
-							value={selectedPaymentMethodLabel}
-							onSelect={handleSelectPaymentMethod}
-						/>
-					</div>
-					<div className="flex-1">
-						<Input
-							type="number"
-							step="0.01"
-							min="0"
-							max={(total / 100).toString()}
-							placeholder={t("paidAmount")}
-							value={paidAmount}
-							onChange={(e) => setPaidAmount(e.target.value)}
-						/>
-					</div>
-				</CardContent>
-			</Card>
-			<Card>
-				<CardHeader>
-					<CardTitle>{t("products")}</CardTitle>
-					<div className="!mt-4 flex flex-col gap-3 sm:flex-row">
-						<div className="relative flex-1">
-							<SearchIcon className="absolute top-2.5 left-2.5 h-4 w-4 text-muted-foreground" />
-							<Input
-								type="text"
-								placeholder={t("searchPlaceholder")}
-								value={productSearch}
-								onChange={(e) => setProductSearch(e.target.value)}
-								className="pl-8"
-							/>
-						</div>
-						<Combobox
-							items={filteredProducts.map((p) => ({
-								id: p.id,
-								name: `${p.name} — ${formatCurrency(p.price, locale)} (${p.product_type === "service" ? t("service") : t("stockCount", { count: p.in_stock })})`,
-							}))}
-							placeholder={t("addProduct")}
-							noSelect
-							onSelect={handleSelectProduct}
-						/>
-					</div>
-				</CardHeader>
-				<CardContent>
-					{selectedProducts.length === 0 ? (
-						<div className="flex h-32 items-center justify-center text-muted-foreground text-sm">
-							{t("selectProducts")}
-						</div>
-					) : (
-						<div className="overflow-x-auto">
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>{tc("name")}</TableHead>
-										<TableHead>{tc("price")}</TableHead>
-										<TableHead className="hidden md:table-cell">
-											{tc("status")}
-										</TableHead>
-										<TableHead>{t("qty")}</TableHead>
-										<TableHead>{tc("total")}</TableHead>
-										<TableHead className="w-10" />
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{selectedProducts.map((product) => {
-										const source = products.find((p) => p.id === product.id);
+		<div className="mx-auto w-full max-w-7xl pb-24 lg:pb-0">
+			<div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+				<div className="min-w-0 space-y-4">
+					<Card>
+						<CardHeader>
+							<CardTitle>{t("saleDetails")}</CardTitle>
+						</CardHeader>
+						<CardContent className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+							<div className="flex flex-1 gap-2">
+								<div className="min-w-0 flex-1">
+									<Combobox
+										items={customers.map((customer) => ({
+											id: customer.id,
+											name: customer.phone
+												? `${customer.name} — ${customer.phone}`
+												: customer.name,
+										}))}
+										placeholder={t("selectCustomer")}
+										value={selectedCustomerLabel}
+										onSelect={handleSelectCustomer}
+									/>
+								</div>
+								<Button
+									type="button"
+									variant="outline"
+									size="icon"
+									onClick={() => setIsCustomerDialogOpen(true)}
+								>
+									<PlusCircle className="h-4 w-4" />
+									<span className="sr-only">{tCustomers("addCustomer")}</span>
+								</Button>
+							</div>
+						</CardContent>
+					</Card>
+
+					<Card>
+						<CardHeader>
+							<CardTitle>{t("products")}</CardTitle>
+							<div className="!mt-4 space-y-3">
+								<div className="flex min-w-0 gap-2">
+									<div className="relative min-w-0 flex-1">
+										<SearchIcon className="absolute top-2.5 left-2.5 h-4 w-4 text-muted-foreground" />
+										<Input
+											type="text"
+											placeholder={t("searchPlaceholder")}
+											value={productSearch}
+											onChange={(e) => setProductSearch(e.target.value)}
+											className="pl-8"
+										/>
+									</div>
+									<div className="flex w-fit items-center gap-1 rounded-lg border p-1">
+										<Button
+											type="button"
+											variant={viewMode === "grid" ? "default" : "ghost"}
+											size="icon"
+											className="h-8 w-8"
+											onClick={() => setViewMode("grid")}
+										>
+											<LayoutGridIcon className="h-4 w-4" />
+										</Button>
+										<Button
+											type="button"
+											variant={viewMode === "list" ? "default" : "ghost"}
+											size="icon"
+											className="h-8 w-8"
+											onClick={() => setViewMode("list")}
+										>
+											<ListIcon className="h-4 w-4" />
+										</Button>
+									</div>
+								</div>
+								<div className="max-w-full overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+									<div className="inline-flex min-w-max gap-2">
+										<Button
+											type="button"
+											variant={
+												selectedCategory === "all" ? "default" : "outline"
+											}
+											size="sm"
+											onClick={() => setSelectedCategory("all")}
+											className="shrink-0"
+										>
+											{tc("all")}
+										</Button>
+										{productCategories.map((category) => (
+											<Button
+												key={category}
+												type="button"
+												variant={
+													selectedCategory === category ? "default" : "outline"
+												}
+												size="sm"
+												onClick={() => setSelectedCategory(category)}
+												className="shrink-0"
+											>
+												{category}
+											</Button>
+										))}
+									</div>
+								</div>
+							</div>
+						</CardHeader>
+						<CardContent>
+							{filteredProducts.length === 0 ? (
+								<div className="flex h-32 items-center justify-center text-muted-foreground text-sm">
+									{t("selectProducts")}
+								</div>
+							) : (
+								<div
+									className={`grid gap-3 ${viewMode === "grid" ? "grid-cols-2" : "grid-cols-1"}`}
+								>
+									{filteredProducts.map((product) => {
+										const selectedProduct = selectedProducts.find(
+											(p) => p.id === product.id,
+										);
 										return (
-											<TableRow key={product.id}>
-												<TableCell className="py-2 align-top font-medium">
-													<div className="mb-1">{product.name}</div>
-													<Input
-														type="text"
-														placeholder={tc("description")}
-														className="h-7 text-xs"
-														value={product.note || ""}
-														onChange={(e) =>
-															handleNoteChange(product.id, e.target.value)
-														}
-													/>
-												</TableCell>
-												<TableCell>
-													<div className="flex items-center gap-2">
-														<span className="text-muted-foreground text-sm">
-															Rp
-														</span>
-														<Input
-															type="number"
-															className="h-8 w-24"
-															min={0}
-															value={product.price / 100}
-															onChange={(e) =>
-																handlePriceChange(product.id, e.target.value)
-															}
-														/>
-													</div>
-												</TableCell>
-												<TableCell className="hidden md:table-cell">
-													<Badge
-														variant={
-															source?.product_type === "service"
-																? "secondary"
-																: source && source.in_stock > 5
-																	? "default"
-																	: "destructive"
-														}
+											<button
+												key={product.id}
+												type="button"
+												onClick={() => handleSelectProduct(product.id)}
+												className={`rounded-xl border p-3 text-left transition-colors hover:border-primary hover:bg-primary/5 ${viewMode === "grid" ? "min-h-36" : ""}`}
+											>
+												<div
+													className={`gap-3 ${viewMode === "grid" ? "flex flex-col" : "flex items-center"}`}
+												>
+													<div
+														className={`flex shrink-0 items-center justify-center rounded-lg bg-muted ${viewMode === "grid" ? "h-20 w-full" : "h-12 w-12"}`}
 													>
-														{source?.product_type === "service"
-															? t("service")
-															: (source?.in_stock ?? 0)}
-													</Badge>
-												</TableCell>
-												<TableCell>
-													<div className="flex items-center gap-1">
-														<Button
-															size="icon"
-															variant="outline"
-															className="h-7 w-7"
-															onClick={() =>
-																handleQuantityChange(product.id, -1)
-															}
-															disabled={product.quantity <= 1}
-														>
-															<MinusIcon className="h-3 w-3" />
-														</Button>
-														<span className="w-8 text-center tabular-nums">
-															{product.quantity}
-														</span>
-														<Button
-															size="icon"
-															variant="outline"
-															className="h-7 w-7"
-															onClick={() =>
-																handleQuantityChange(product.id, 1)
-															}
-															disabled={
-																source?.product_type === "product"
-																	? product.quantity >= source.in_stock
-																	: false
-															}
-														>
-															<PlusIcon className="h-3 w-3" />
-														</Button>
+														<PackageIcon className="h-5 w-5 text-muted-foreground md:h-6 md:w-6" />
 													</div>
-												</TableCell>
-												<TableCell className="font-medium">
-													{formatCurrency(
-														product.quantity * product.price,
-														locale,
-													)}
-												</TableCell>
-												<TableCell>
-													<Button
-														variant="ghost"
-														size="icon"
-														className="h-8 w-8"
-														onClick={() => handleRemoveProduct(product.id)}
-													>
-														<Trash2Icon className="h-4 w-4" />
-														<span className="sr-only">{tc("remove")}</span>
-													</Button>
-												</TableCell>
-											</TableRow>
+													<div className="min-w-0 flex-1">
+														<div className="flex items-start justify-between gap-2">
+															<div className="min-w-0">
+																<div className="break-words font-semibold text-sm leading-tight md:text-base">
+																	{product.name}
+																</div>
+																<div className="text-muted-foreground text-xs">
+																	{product.category ?? "—"}
+																</div>
+															</div>
+															{selectedProduct && (
+																<Badge>{selectedProduct.quantity}</Badge>
+															)}
+														</div>
+														<div className="mt-2 font-bold text-base md:text-lg">
+															{formatCurrency(product.price, locale)}
+														</div>
+														<div className="mt-1 text-muted-foreground text-xs">
+															{product.product_type === "service"
+																? t("service")
+																: t("stockCount", { count: product.in_stock })}
+														</div>
+													</div>
+												</div>
+											</button>
 										);
 									})}
-								</TableBody>
-							</Table>
+								</div>
+							)}
+						</CardContent>
+					</Card>
+				</div>
+
+				<div className="hidden lg:block">{cartPanel}</div>
+			</div>
+
+			<div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background p-3 lg:hidden">
+				<div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+					<div>
+						<div className="text-muted-foreground text-xs">
+							{selectedProducts.length} {t("products")}
 						</div>
-					)}
-					<div className="mt-4 flex flex-col items-center justify-between gap-3 border-t pt-4 sm:flex-row">
-						<strong className="text-lg">
-							{tc("total")}: {formatCurrency(total, locale)}
-						</strong>
-						<div className="flex w-full items-center gap-3 sm:w-auto">
-							<Button
-								onClick={handleCreateOrder}
-								disabled={!canCreate || createOrderMutation.isPending}
-								size="lg"
-								className="flex-1 sm:flex-initial"
-							>
-								{createOrderMutation.isPending && (
-									<Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
-								)}
-								{t("createOrder")}
-							</Button>
+						<div className="font-bold text-lg">
+							{formatCurrency(total, locale)}
 						</div>
 					</div>
-				</CardContent>
-			</Card>
+					<Button type="button" onClick={() => setIsCartOpen(true)}>
+						Keranjang / Bayar
+					</Button>
+				</div>
+			</div>
+
+			<Dialog open={isCartOpen} onOpenChange={setIsCartOpen}>
+				<DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+					<DialogHeader>
+						<DialogTitle>{t("createOrder")}</DialogTitle>
+					</DialogHeader>
+					{cartPanel}
+				</DialogContent>
+			</Dialog>
 			<Dialog
 				open={isCustomerDialogOpen}
 				onOpenChange={setIsCustomerDialogOpen}
@@ -720,6 +809,36 @@ export default function POSPage() {
 				</DialogContent>
 			</Dialog>
 
+			<PaymentDialog
+				open={!!paymentOrder}
+				onOpenChange={(open) => {
+					if (!open) setPaymentOrder(null);
+				}}
+				title={tOrders("receivePayment")}
+				totalLabel={tc("total")}
+				amountLabel={tOrders("paymentAmount")}
+				paymentMethodLabel={tOrders("paymentMethod")}
+				submitLabel={tOrders("savePayment")}
+				cancelLabel={tc("cancel")}
+				totalAmount={paymentOrder?.total_amount ?? 0}
+				maxAmount={
+					paymentOrder
+						? paymentOrder.total_amount - paymentOrder.paid_amount
+						: 0
+				}
+				locale={locale}
+				paymentMethods={paymentMethods}
+				isPending={receivePaymentMutation.isPending}
+				onSubmit={({ paymentMethodId, amount }) => {
+					if (!paymentOrder) return;
+					receivePaymentMutation.mutate({
+						id: paymentOrder.id,
+						paymentMethodId,
+						amount,
+					});
+				}}
+			/>
+
 			{/* Dialog Sukses Transaksi / Cetak Struk */}
 			{successOrder && (
 				<Dialog
@@ -773,16 +892,9 @@ export default function POSPage() {
 								<div className="space-y-1">
 									{successOrder.items.map((item) => (
 										<div key={item.id} className="flex justify-between">
-											<div className="flex flex-col">
-												<span>
-													{item.name} x{item.quantity}
-												</span>
-												{item.note && (
-													<span className="ml-2 text-[10px] text-muted-foreground">
-														- {item.note}
-													</span>
-												)}
-											</div>
+											<span>
+												{item.name} x{item.quantity}
+											</span>
 											<span>
 												Rp{" "}
 												{((item.price * item.quantity) / 100).toLocaleString(
@@ -792,6 +904,17 @@ export default function POSPage() {
 										</div>
 									))}
 								</div>
+								{successOrder.note && (
+									<>
+										<hr className="my-2 border-dashed" />
+										<div className="space-y-1 text-[10px] text-muted-foreground">
+											<div className="font-semibold text-foreground">
+												Catatan
+											</div>
+											<div>{successOrder.note}</div>
+										</div>
+									</>
+								)}
 								<hr className="my-2 border-dashed" />
 								<div className="flex justify-between font-bold">
 									<span>Total:</span>
@@ -974,6 +1097,12 @@ export default function POSPage() {
 							</div>
 						))}
 					</div>
+					{successOrder.note && (
+						<div className="mb-2 border-b border-dashed pb-2 text-[9px]">
+							<p className="font-bold">Catatan:</p>
+							<p>{successOrder.note}</p>
+						</div>
+					)}
 					<div className="space-y-1 text-right">
 						<div className="flex justify-between font-bold">
 							<p>TOTAL:</p>

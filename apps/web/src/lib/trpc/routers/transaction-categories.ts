@@ -50,4 +50,40 @@ export const transactionCategoriesRouter = router({
 				.returning();
 			return row;
 		}),
+	update: protectedProcedure
+		.input(
+			z.object({
+				id: z.number(),
+				name: z.string().min(1).max(100),
+				type: z.enum(["income", "expense"]),
+			}),
+		)
+		.output(transactionCategorySchema)
+		.mutation(async ({ ctx, input }) => {
+			const [row] = await db
+				.update(transactionCategories)
+				.set({ name: input.name, type: input.type })
+				.where(
+					and(
+						eq(transactionCategories.id, input.id),
+						eq(transactionCategories.user_uid, ctx.user.id),
+					),
+				)
+				.returning();
+			return row;
+		}),
+	delete: protectedProcedure
+		.input(z.object({ id: z.number() }))
+		.output(z.object({ success: z.boolean() }))
+		.mutation(async ({ ctx, input }) => {
+			await db
+				.delete(transactionCategories)
+				.where(
+					and(
+						eq(transactionCategories.id, input.id),
+						eq(transactionCategories.user_uid, ctx.user.id),
+					),
+				);
+			return { success: true };
+		}),
 });

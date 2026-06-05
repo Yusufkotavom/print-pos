@@ -45,6 +45,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 import { z } from "zod/v4";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
+import { FormattedNumberInput } from "@/components/formatted-number-input";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/router";
@@ -370,18 +371,15 @@ export default function Cashier() {
 											<span className="absolute top-1/2 left-2 -translate-y-1/2 text-muted-foreground text-sm">
 												{locale === "id" ? "Rp" : "$"}
 											</span>
-											<Input
-												type="number"
-												min="0.01"
-												step="0.01"
-												value={inlineForm.amount || ""}
-												onChange={(e) =>
+											<FormattedNumberInput
+												value={inlineForm.amount || null}
+												onValueChange={(value) =>
 													setInlineForm({
 														...inlineForm,
-														amount: Number(e.target.value),
+														amount: value ?? 0,
 													})
 												}
-												placeholder="0.00"
+												placeholder="0"
 												className="h-8 pl-5"
 											/>
 										</div>
@@ -487,16 +485,13 @@ export default function Cashier() {
 						</div>
 						<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
 							<Label htmlFor="create-amount">{tc("amount")}</Label>
-							<Input
+							<FormattedNumberInput
 								id="create-amount"
-								type="number"
-								min="0.01"
-								step="0.01"
-								value={inlineForm.amount || ""}
-								onChange={(e) =>
+								value={inlineForm.amount || null}
+								onValueChange={(value) =>
 									setInlineForm({
 										...inlineForm,
-										amount: Number(e.target.value),
+										amount: value ?? 0,
 									})
 								}
 								className="col-span-3"
@@ -633,14 +628,11 @@ export default function Cashier() {
 									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
 										<Label htmlFor="edit-amount">{tc("amount")}</Label>
 										<div className="col-span-3">
-											<Input
+											<FormattedNumberInput
 												id="edit-amount"
-												type="number"
-												min="0.01"
-												step="0.01"
 												value={field.state.value}
-												onChange={(e) =>
-													field.handleChange(Number(e.target.value))
+												onValueChange={(value) =>
+													field.handleChange(value ?? 0)
 												}
 												onBlur={field.handleBlur}
 												error={

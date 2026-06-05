@@ -58,6 +58,7 @@ export const orders = pgTable("orders", {
 	order_number: varchar("order_number", { length: 32 }),
 	customer_id: integer("customer_id").references(() => customers.id),
 	total_amount: integer("total_amount").notNull(),
+	note: text("note"),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
 	status: varchar("status", { length: 20 }),
 	paid_amount: integer("paid_amount").default(0).notNull(),
@@ -92,7 +93,8 @@ export const transactionCategories = pgTable("transaction_categories", {
 
 export const paymentMethods = pgTable("payment_methods", {
 	id: serial("id").primaryKey(),
-	name: varchar("name", { length: 50 }).notNull().unique(),
+	name: varchar("name", { length: 50 }).notNull(),
+	user_uid: varchar("user_uid", { length: 255 }).notNull().default(""),
 	created_at: timestamp("created_at").defaultNow(),
 });
 

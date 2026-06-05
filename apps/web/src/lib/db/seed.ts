@@ -31,19 +31,23 @@ export async function seed() {
 
 	if (existing[0].count > 0) return;
 
-	// ── Payment Methods ──────────────────────────────────────────────────────
-	const [pmCredit, pmDebit, pmCash] = await db
-		.insert(paymentMethods)
-		.values([{ name: "Credit Card" }, { name: "Debit Card" }, { name: "Cash" }])
-		.returning();
-
-	const paymentMethodIds = [pmCredit.id, pmDebit.id, pmCash.id];
-
 	// ── Demo User ────────────────────────────────────────────────────────────
 	const signUpRes = await auth.api.signUpEmail({
 		body: { name: DEMO_NAME, email: DEMO_EMAIL, password: DEMO_PASSWORD },
 	});
 	const userId = signUpRes.user.id;
+
+	// ── Payment Methods ──────────────────────────────────────────────────────
+	const [pmCredit, pmDebit, pmCash] = await db
+		.insert(paymentMethods)
+		.values([
+			{ name: "Credit Card", user_uid: userId },
+			{ name: "Debit Card", user_uid: userId },
+			{ name: "Cash", user_uid: userId },
+		])
+		.returning();
+
+	const paymentMethodIds = [pmCredit.id, pmDebit.id, pmCash.id];
 
 	// ── Customers ────────────────────────────────────────────────────────────
 	const customerValues = Array.from({ length: 20 }, () => ({

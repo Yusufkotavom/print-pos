@@ -57,6 +57,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
 	{ href: "/admin", labelKey: "dashboard", icon: LayoutDashboardIcon },
+	{ href: "/admin/pos", labelKey: "pos", icon: ShoppingCartIcon },
+	{ href: "/admin/orders", labelKey: "orders", icon: ShoppingBagIcon },
 	{
 		href: "/admin/cashier",
 		labelKey: "cashier",
@@ -76,7 +78,6 @@ const navItems: NavItem[] = [
 	},
 	{ href: "/admin/products", labelKey: "products", icon: PackageIcon },
 	{ href: "/admin/customers", labelKey: "customers", icon: UsersIcon },
-	{ href: "/admin/orders", labelKey: "orders", icon: ShoppingBagIcon },
 	{
 		href: "/admin/reports/financial",
 		labelKey: "financialReports",
@@ -104,7 +105,6 @@ const navItems: NavItem[] = [
 		labelKey: "paymentMethods",
 		icon: CreditCardIcon,
 	},
-	{ href: "/admin/pos", labelKey: "pos", icon: ShoppingCartIcon },
 	{
 		href: "/admin/company/settings",
 		labelKey: "companySettings",

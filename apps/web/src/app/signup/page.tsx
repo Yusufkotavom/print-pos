@@ -7,11 +7,20 @@ import { Label } from "@finopenpos/ui/components/label";
 import { MountainIcon } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { useEffect } from "react";
+import { toast } from "sonner";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { signup } from "./actions";
 
 export default function SignupPage() {
 	const t = useTranslations("signup");
+
+	useEffect(() => {
+		const params = new URLSearchParams(window.location.search);
+		if (params.get("error") === "signup-failed") {
+			toast.error(t("signupFailed"));
+		}
+	}, [t]);
 
 	return (
 		<div className="flex min-h-screen flex-col items-center justify-center bg-background">

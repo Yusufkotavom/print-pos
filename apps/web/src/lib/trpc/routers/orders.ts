@@ -20,6 +20,7 @@ const orderWithCustomerSchema = z.object({
 	order_number: z.string().nullable(),
 	customer_id: z.number().nullable(),
 	total_amount: z.number(),
+	note: z.string().nullable(),
 	status: z.string().nullable(),
 	paid_amount: z.number(),
 	payment_status: z.string(),
@@ -33,6 +34,7 @@ const orderDetailSchema = z.object({
 	order_number: z.string().nullable(),
 	customer_id: z.number().nullable(),
 	total_amount: z.number(),
+	note: z.string().nullable(),
 	status: z.string().nullable(),
 	user_uid: z.string(),
 	created_at: z.date().nullable(),
@@ -123,7 +125,8 @@ export const ordersRouter = router({
 		.input(
 			z.object({
 				customerId: z.number(),
-				paymentMethodId: z.number(),
+				paymentMethodId: z.number().optional(),
+				note: z.string().optional(),
 				products: z.array(
 					z.object({
 						id: z.number(),
@@ -139,7 +142,11 @@ export const ordersRouter = router({
 		.output(orderWithCustomerSchema)
 		.mutation(async ({ ctx, input }) => {
 			return db.transaction(async (tx) => {
-				const paidAmount = input.paidAmount ?? input.total;
+				const paidAmount = input.paidAmount ?? 0;
+				const paymentMethodId = input.paymentMethodId;
+				if (paidAmount > 0 && !paymentMethodId) {
+					throw new Error("Payment method is required");
+				}
 				const paymentStatus =
 					paidAmount >= input.total
 						? "paid"
@@ -152,6 +159,7 @@ export const ordersRouter = router({
 					.values({
 						customer_id: input.customerId,
 						total_amount: input.total,
+						note: input.note?.trim() || null,
 						paid_amount: paidAmount,
 						payment_status: paymentStatus,
 						user_uid: ctx.user.id,
@@ -216,7 +224,7 @@ export const ordersRouter = router({
 						.insert(transactions)
 						.values({
 							order_id: orderData.id,
-							payment_method_id: input.paymentMethodId,
+							payment_method_id: paymentMethodId,
 							amount: paidAmount,
 							user_uid: ctx.user.id,
 							status: "completed",

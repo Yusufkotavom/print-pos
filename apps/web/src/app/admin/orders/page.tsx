@@ -43,6 +43,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 import { z } from "zod/v4";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
+import { FormattedNumberInput } from "@/components/formatted-number-input";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/router";
@@ -430,11 +431,12 @@ export default function OrdersPage() {
 									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
 										<Label htmlFor="total">{tc("total")}</Label>
 										<div className="col-span-3">
-											<Input
+											<FormattedNumberInput
 												id="total"
-												type="number"
-												value={field.state.value}
-												onChange={(e) => field.handleChange(e.target.value)}
+												value={Number(field.state.value || 0)}
+												onValueChange={(value) =>
+													field.handleChange(String(value ?? 0))
+												}
 												onBlur={field.handleBlur}
 												error={
 													field.state.meta.errors.length > 0

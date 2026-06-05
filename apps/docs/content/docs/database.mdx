@@ -43,7 +43,8 @@ erDiagram
 
     payment_methods {
         serial id PK
-        varchar name UK
+        varchar name
+        varchar user_uid
         timestamp created_at
     }
 
@@ -52,6 +53,7 @@ erDiagram
         varchar order_number
         integer customer_id FK
         integer total_amount
+        text note
         varchar user_uid
         varchar status
         integer paid_amount

@@ -1,12 +1,13 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db } from "@/lib/db";
-import { paymentMethods } from "@/lib/db/schema";
+import { paymentMethods, transactions } from "@/lib/db/schema";
 import { protectedProcedure, router } from "../init";
 
 const paymentMethodSchema = z.object({
 	id: z.number(),
 	name: z.string(),
+	user_uid: z.string(),
 	created_at: z.date().nullable(),
 });
 
@@ -22,8 +23,11 @@ export const paymentMethodsRouter = router({
 		})
 		.input(z.void())
 		.output(z.array(paymentMethodSchema))
-		.query(async () => {
-			return db.select().from(paymentMethods);
+		.query(async ({ ctx }) => {
+			return db
+				.select()
+				.from(paymentMethods)
+				.where(eq(paymentMethods.user_uid, ctx.user.id));
 		}),
 
 	create: protectedProcedure
@@ -37,10 +41,26 @@ export const paymentMethodsRouter = router({
 		})
 		.input(z.object({ name: z.string().min(1) }))
 		.output(paymentMethodSchema)
-		.mutation(async ({ input }) => {
+		.mutation(async ({ ctx, input }) => {
+			const name = input.name.trim();
+			const existing = await db
+				.select({ id: paymentMethods.id })
+				.from(paymentMethods)
+				.where(
+					and(
+						eq(paymentMethods.user_uid, ctx.user.id),
+						eq(paymentMethods.name, name),
+					),
+				)
+				.limit(1);
+
+			if (existing.length > 0) {
+				throw new Error("Payment method already exists");
+			}
+
 			const [data] = await db
 				.insert(paymentMethods)
-				.values({ name: input.name.trim() })
+				.values({ name, user_uid: ctx.user.id })
 				.returning();
 			return data;
 		}),
@@ -56,11 +76,32 @@ export const paymentMethodsRouter = router({
 		})
 		.input(z.object({ id: z.number(), name: z.string().min(1) }))
 		.output(paymentMethodSchema)
-		.mutation(async ({ input }) => {
+		.mutation(async ({ ctx, input }) => {
+			const name = input.name.trim();
+			const existing = await db
+				.select({ id: paymentMethods.id })
+				.from(paymentMethods)
+				.where(
+					and(
+						eq(paymentMethods.user_uid, ctx.user.id),
+						eq(paymentMethods.name, name),
+					),
+				)
+				.limit(1);
+
+			if (existing.some((row) => row.id !== input.id)) {
+				throw new Error("Payment method already exists");
+			}
+
 			const [data] = await db
 				.update(paymentMethods)
-				.set({ name: input.name.trim() })
-				.where(eq(paymentMethods.id, input.id))
+				.set({ name })
+				.where(
+					and(
+						eq(paymentMethods.id, input.id),
+						eq(paymentMethods.user_uid, ctx.user.id),
+					),
+				)
 				.returning();
 			return data;
 		}),
@@ -76,8 +117,25 @@ export const paymentMethodsRouter = router({
 		})
 		.input(z.object({ id: z.number() }))
 		.output(z.object({ success: z.boolean() }))
-		.mutation(async ({ input }) => {
-			await db.delete(paymentMethods).where(eq(paymentMethods.id, input.id));
+		.mutation(async ({ ctx, input }) => {
+			const existingTransactions = await db
+				.select({ id: transactions.id })
+				.from(transactions)
+				.where(eq(transactions.payment_method_id, input.id))
+				.limit(1);
+
+			if (existingTransactions.length > 0) {
+				throw new Error("Payment method already used in transactions");
+			}
+
+			await db
+				.delete(paymentMethods)
+				.where(
+					and(
+						eq(paymentMethods.id, input.id),
+						eq(paymentMethods.user_uid, ctx.user.id),
+					),
+				);
 			return { success: true };
 		}),
 });

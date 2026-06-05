@@ -26,6 +26,18 @@ export function formatCurrency(cents: number, locale?: string) {
 	}).format(cents / 100);
 }
 
+export function formatIndonesianNumber(value: number | null | undefined) {
+	if (value === null || value === undefined || Number.isNaN(value)) return "";
+	return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(
+		value,
+	);
+}
+
+export function parseIndonesianNumber(value: string) {
+	const normalized = value.replace(/[^\d]/g, "");
+	return normalized ? Number(normalized) : 0;
+}
+
 /** Format an ISO date string to a short label like "Jan 5". */
 export function formatShortDate(dateStr: string, locale?: string) {
 	const d = new Date(`${dateStr}T00:00:00`);

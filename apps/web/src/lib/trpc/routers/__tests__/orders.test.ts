@@ -46,7 +46,7 @@ beforeAll(async () => {
 
 	const [pm] = await db
 		.insert(paymentMethods)
-		.values({ name: "Cash-OrderTest" })
+		.values({ name: "Cash-OrderTest", user_uid: "user-1" })
 		.returning();
 	paymentMethodId = pm.id;
 });
@@ -68,6 +68,7 @@ describe("orders.list", () => {
 			paymentMethodId,
 			products: [{ id: productId, quantity: 2, price: 1000 }],
 			total: 2000,
+			paidAmount: 2000,
 		});
 
 		const list = await caller.list();
@@ -98,6 +99,7 @@ describe("orders.create", () => {
 			paymentMethodId,
 			products: [{ id: productId, quantity: 3, price: 1000 }],
 			total: 3000,
+			paidAmount: 3000,
 		});
 
 		expect(order.id).toBeGreaterThan(0);
@@ -155,6 +157,7 @@ describe("orders.update", () => {
 			paymentMethodId,
 			products: [{ id: productId, quantity: 1, price: 500 }],
 			total: 500,
+			paidAmount: 500,
 		});
 		const updated = await caller.update({ id: order.id, status: "cancelled" });
 		expect(updated.status).toBe("cancelled");
@@ -171,6 +174,7 @@ describe("orders.update", () => {
 			paymentMethodId,
 			products: [{ id: productId, quantity: 1, price: 500 }],
 			total: 500,
+			paidAmount: 500,
 		});
 		await expect(
 			caller.update({ id: order.id, status: "bogus" as any }),
@@ -190,6 +194,7 @@ describe("orders.delete", () => {
 			paymentMethodId,
 			products: [{ id: productId, quantity: 1, price: 100 }],
 			total: 100,
+			paidAmount: 100,
 		});
 
 		const before = await caller.list();

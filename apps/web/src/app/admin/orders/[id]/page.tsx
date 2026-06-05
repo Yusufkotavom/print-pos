@@ -8,14 +8,6 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@finopenpos/ui/components/card";
-import { Input } from "@finopenpos/ui/components/input";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@finopenpos/ui/components/select";
 import { Skeleton } from "@finopenpos/ui/components/skeleton";
 import {
 	Table,
@@ -33,6 +25,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { use, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { InvoicePDF } from "@/components/invoice-pdf";
+import { PaymentDialog } from "@/components/payment-dialog";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
 
@@ -59,8 +52,7 @@ export default function OrderDetailPage({
 	const t = useTranslations("orders");
 	const tc = useTranslations("common");
 	const locale = useLocale();
-	const [paymentMethodId, setPaymentMethodId] = useState<number | null>(null);
-	const [paymentAmount, setPaymentAmount] = useState("");
+	const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
 
 	const [isMounted, setIsMounted] = useState(false);
 	useEffect(() => {
@@ -97,7 +89,7 @@ export default function OrderDetailPage({
 					trpc.orders.get.queryOptions({ id: orderId }),
 				);
 				queryClient.invalidateQueries(trpc.orders.list.queryOptions());
-				setPaymentAmount("");
+				setIsPaymentDialogOpen(false);
 				toast.success(t("paymentReceived"));
 			},
 			onError: (err) => toast.error(err.message || t("paymentError")),
@@ -144,14 +136,14 @@ export default function OrderDetailPage({
 				? t("partial")
 				: t("unpaid");
 
-	const handleReceivePayment = () => {
-		if (!paymentMethodId) return;
-		const amount = Math.round(Number.parseFloat(paymentAmount) * 100);
-		if (amount <= 0) return;
+	const handleReceivePayment = (data: {
+		paymentMethodId: number;
+		amount: number;
+	}) => {
 		receivePaymentMutation.mutate({
 			id: order.id,
-			paymentMethodId,
-			amount,
+			paymentMethodId: data.paymentMethodId,
+			amount: data.amount,
 		});
 	};
 
@@ -241,9 +233,11 @@ export default function OrderDetailPage({
 								{formatCurrency(order.paid_amount, locale)}
 							</dd>
 						</div>
-						<div>
-							<dt className="text-muted-foreground">{t("remainingAmount")}</dt>
-							<dd className="font-medium">
+						<div className="rounded-lg border border-red-200 bg-red-50 p-3 sm:col-span-2">
+							<dt className="font-bold text-red-700 text-sm uppercase tracking-wide">
+								{t("remainingAmount")}
+							</dt>
+							<dd className="mt-1 font-bold text-2xl text-red-700 sm:text-3xl">
 								{formatCurrency(remainingAmount, locale)}
 							</dd>
 						</div>
@@ -252,49 +246,31 @@ export default function OrderDetailPage({
 							<dd>{createdAtLabel}</dd>
 						</div>
 					</dl>
+					{remainingAmount > 0 && (
+						<div className="mt-4 border-t pt-4 print:hidden">
+							<Button onClick={() => setIsPaymentDialogOpen(true)}>
+								{t("receivePayment")}
+							</Button>
+							<PaymentDialog
+								open={isPaymentDialogOpen}
+								onOpenChange={setIsPaymentDialogOpen}
+								title={t("receivePayment")}
+								totalLabel={t("remainingAmount")}
+								amountLabel={t("paymentAmount")}
+								paymentMethodLabel={t("paymentMethod")}
+								submitLabel={t("savePayment")}
+								cancelLabel={tc("cancel")}
+								totalAmount={remainingAmount}
+								maxAmount={remainingAmount}
+								locale={locale}
+								paymentMethods={paymentMethods}
+								isPending={receivePaymentMutation.isPending}
+								onSubmit={handleReceivePayment}
+							/>
+						</div>
+					)}
 				</CardContent>
 			</Card>
-
-			{remainingAmount > 0 && (
-				<Card className="print:hidden">
-					<CardHeader>
-						<CardTitle>{t("receivePayment")}</CardTitle>
-					</CardHeader>
-					<CardContent className="flex flex-col gap-3 sm:flex-row">
-						<Select
-							value={paymentMethodId?.toString() ?? ""}
-							onValueChange={(value) => setPaymentMethodId(Number(value))}
-						>
-							<SelectTrigger className="flex-1">
-								<SelectValue placeholder={t("paymentMethod")} />
-							</SelectTrigger>
-							<SelectContent>
-								{paymentMethods.map((method) => (
-									<SelectItem key={method.id} value={method.id.toString()}>
-										{method.name}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-						<Input
-							type="number"
-							step="0.01"
-							min="0"
-							max={(remainingAmount / 100).toString()}
-							placeholder={t("paymentAmount")}
-							value={paymentAmount}
-							onChange={(e) => setPaymentAmount(e.target.value)}
-							className="flex-1"
-						/>
-						<Button
-							onClick={handleReceivePayment}
-							disabled={!paymentMethodId || receivePaymentMutation.isPending}
-						>
-							{t("savePayment")}
-						</Button>
-					</CardContent>
-				</Card>
-			)}
 
 			{order.orderItems && order.orderItems.length > 0 && (
 				<Card>

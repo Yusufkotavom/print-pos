@@ -52,6 +52,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod/v4";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
+import { FormattedNumberInput } from "@/components/formatted-number-input";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/router";
@@ -525,13 +526,11 @@ export default function Products() {
 													{tc("price")}
 												</Label>
 												<div className="col-span-3">
-													<Input
+													<FormattedNumberInput
 														id="price"
-														type="number"
-														step="0.01"
 														value={field.state.value}
-														onChange={(e) =>
-															field.handleChange(Number(e.target.value))
+														onValueChange={(value) =>
+															field.handleChange(value ?? 0)
 														}
 														onBlur={field.handleBlur}
 														error={
@@ -553,13 +552,11 @@ export default function Products() {
 													HPP
 												</Label>
 												<div className="col-span-3">
-													<Input
+													<FormattedNumberInput
 														id="cost"
-														type="number"
-														step="0.01"
 														value={field.state.value}
-														onChange={(e) =>
-															field.handleChange(Number(e.target.value))
+														onValueChange={(value) =>
+															field.handleChange(value ?? 0)
 														}
 														onBlur={field.handleBlur}
 														error={
@@ -608,12 +605,11 @@ export default function Products() {
 													{t("inStock")}
 												</Label>
 												<div className="col-span-3">
-													<Input
+													<FormattedNumberInput
 														id="in_stock"
-														type="number"
 														value={field.state.value}
-														onChange={(e) =>
-															field.handleChange(Number(e.target.value))
+														onValueChange={(value) =>
+															field.handleChange(value ?? 0)
 														}
 														onBlur={field.handleBlur}
 														error={
@@ -675,20 +671,12 @@ export default function Products() {
 													Harga Grosir (Rp)
 												</Label>
 												<div className="col-span-3">
-													<Input
+													<FormattedNumberInput
 														id="wholesale_price"
-														type="number"
-														step="0.01"
-														min={0}
-														placeholder="Contoh: 9500"
-														value={field.state.value ?? ""}
-														onChange={(e) =>
-															field.handleChange(
-																e.target.value === ""
-																	? null
-																	: Number(e.target.value),
-															)
-														}
+														placeholder="Contoh: 9.500"
+														value={field.state.value}
+														allowEmpty
+														onValueChange={field.handleChange}
 													/>
 												</div>
 											</div>
@@ -704,19 +692,12 @@ export default function Products() {
 													Min. Qty Grosir
 												</Label>
 												<div className="col-span-3">
-													<Input
+													<FormattedNumberInput
 														id="wholesale_min_qty"
-														type="number"
-														min={1}
 														placeholder="Contoh: 12"
-														value={field.state.value ?? ""}
-														onChange={(e) =>
-															field.handleChange(
-																e.target.value === ""
-																	? null
-																	: Number(e.target.value),
-															)
-														}
+														value={field.state.value}
+														allowEmpty
+														onValueChange={field.handleChange}
 													/>
 													<p className="mt-1 text-muted-foreground text-xs">
 														Harga grosir aktif saat qty ≥ angka ini
