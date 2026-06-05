@@ -23,7 +23,10 @@ export const products = pgTable("products", {
 	name: varchar("name", { length: 255 }).notNull(),
 	description: text("description"),
 	price: integer("price").notNull(),
+	cost: integer("cost").default(0).notNull(),
 	in_stock: integer("in_stock").notNull(),
+	wholesale_price: integer("wholesale_price"),
+	wholesale_min_qty: integer("wholesale_min_qty"),
 	product_type: varchar("product_type", { length: 20 })
 		.default("product")
 		.notNull(),
@@ -74,6 +77,8 @@ export const orderItems = pgTable("order_items", {
 	item_type: varchar("item_type", { length: 20 }).default("product").notNull(),
 	quantity: integer("quantity").notNull(),
 	price: integer("price").notNull(),
+	cost: integer("cost").default(0).notNull(),
+	note: text("note"),
 	created_at: timestamp("created_at").defaultNow(),
 });
 
@@ -136,8 +141,13 @@ export const companySettings = pgTable("company_settings", {
 	receipt_header: text("receipt_header"),
 	receipt_footer: text("receipt_footer"),
 	invoice_terms: text("invoice_terms"),
-	invoice_template: varchar("invoice_template", { length: 20 }).default("standard"),
-	created_at: timestamp("created_at").defaultNow(),
+	invoice_template: varchar("invoice_template", { length: 20 }).default(
+		"standard",
+	),
+	whatsapp_template: text("whatsapp_template").default(
+		"Halo! Pesanan Anda {order_number} telah berhasil diproses. Anda bisa mengecek invoice melalui tautan berikut: {invoice_url} \nTerima kasih!",
+	),
+	created_at: timestamp("created_at").defaultNow().notNull(),
 	updated_at: timestamp("updated_at").defaultNow(),
 });
 

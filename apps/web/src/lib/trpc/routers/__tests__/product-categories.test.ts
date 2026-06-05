@@ -45,8 +45,12 @@ describe("productCategories", () => {
 		const ownList = await caller.list();
 		const otherList = await other.list();
 
-		expect(ownList.every((category) => category.user_uid === "user-1")).toBe(true);
+		expect(ownList.every((category) => category.user_uid === "user-1")).toBe(
+			true,
+		);
 		expect(ownList.some((category) => category.name === "Other")).toBe(false);
-		expect(otherList.every((category) => category.user_uid === "other-user")).toBe(true);
+		expect(
+			otherList.every((category) => category.user_uid === "other-user"),
+		).toBe(true);
 	});
 });

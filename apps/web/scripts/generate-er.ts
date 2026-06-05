@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { getTableName } from "drizzle-orm";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import * as schema from "../src/lib/db/schema";
@@ -126,4 +126,7 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "../../..");
 injectIntoFile(resolve(root, "README.md").trim(), mermaid);
 injectIntoFile(resolve(root, "README.ptBR.md").trim(), mermaid);
-injectIntoFile(resolve(root, "apps/docs/content/docs/database.mdx").trim(), mermaid);
+injectIntoFile(
+	resolve(root, "apps/docs/content/docs/database.mdx").trim(),
+	mermaid,
+);

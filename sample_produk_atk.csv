@@ -1,0 +1,51 @@
+name,description,price,in_stock,product_type,category
+Fotocopy A4 B/W,Fotocopy hitam putih ukuran A4,250,100000,product,Percetakan
+Print Warna A4,Print dokumen warna A4 per lembar,1500,50000,product,Percetakan
+Print Hitam Putih A4,Print dokumen hitam putih A4 per lembar,500,50000,product,Percetakan
+Jilid Lakban Biasa,Jilid buku dengan lakban hitam (max 100 lbr),5000,500,service,Percetakan
+Jilid Spiral Kawat,Jilid spiral kawat ukuran A4,15000,200,service,Percetakan
+Jilid Soft Cover,Jilid buku soft cover standar,25000,100,service,Percetakan
+Jilid Hard Cover,Jilid buku skripsi hard cover,45000,50,service,Percetakan
+Cetak Pas Foto 3x4,Cetak pas foto ukuran 3x4 (4 lembar),10000,1000,product,Percetakan
+Cetak Pas Foto 4x6,Cetak pas foto ukuran 4x6 (4 lembar),15000,1000,product,Percetakan
+Kertas HVS A4 70gr Sinar Dunia,Kertas HVS 1 Rim 500 lembar,48000,50,product,ATK
+Kertas HVS F4 70gr Sinar Dunia,Kertas HVS 1 Rim 500 lembar,55000,40,product,ATK
+Kertas HVS A4 80gr PaperOne,Kertas HVS 1 Rim 500 lembar,55000,30,product,ATK
+Pulpen Standard AE-7 Hitam,Pulpen tinta gel standar hitam,2500,200,product,ATK
+Pulpen Standard AE-7 Biru,Pulpen tinta gel standar biru,2500,100,product,ATK
+Pulpen Pilot Hitam,Pulpen Pilot B-P-T-P hitam,3500,150,product,ATK
+Pensil Joyko 2B,Pensil 2B untuk ujian dan menulis,1500,300,product,ATK
+Pensil Faber-Castell 2B,Pensil ujian berkualitas,4500,200,product,ATK
+Penghapus Joyko B-40,Penghapus pensil putih,1000,250,product,ATK
+Penghapus Faber-Castell Hitam,Penghapus pensil bebas debu,3000,150,product,ATK
+Rautan Pensil Joyko,Rautan pensil standar,2000,100,product,ATK
+Spidol Snowman Whiteboard Hitam,Spidol papan tulis bisa dihapus,8500,100,product,ATK
+Spidol Snowman Permanent Hitam,Spidol permanen hitam,8000,100,product,ATK
+Tinta Printer Epson T664 Hitam,Tinta refill printer Epson original 70ml,85000,20,product,ATK
+Tinta Printer Epson T664 Warna,Tinta refill printer Epson original Cyan/Magenta/Yellow,85000,20,product,ATK
+Buku Tulis Sinar Dunia 38 Lembar,Buku tulis standar anak sekolah,3500,500,product,ATK
+Buku Tulis Sinar Dunia 58 Lembar,Buku tulis standar tebal,5000,300,product,ATK
+Buku Tulis Campus 50 Lembar,Buku tulis kuliah B5,6000,200,product,ATK
+Buku Gambar A3 Kiky,Buku gambar ukuran A3,8500,100,product,ATK
+Lem Final (Kecil),Lem cair kertas serbaguna,3000,150,product,ATK
+Lem Kertas Stick Joyko,Lem batangan untuk kertas,4500,100,product,ATK
+Tip-X Kertas Joyko,Correction tape Joyko,6500,120,product,ATK
+Tip-X Cair Kenko,Correction fluid Kenko merah,5000,150,product,ATK
+Cetak Spanduk / Banner (Per Meter),Cetak banner bahan Flexi China 280gr per meter persegi,20000,1000,product,Percetakan
+Cetak X-Banner Lengkap,Cetak X-Banner ukuran 60x160cm lengkap dengan tiang,85000,50,product,Percetakan
+Cetak Roll Banner Lengkap,Cetak Roll Banner ukuran 60x160cm bahan Albatros,250000,20,product,Percetakan
+Cetak Kartu Nama (1 Box),Cetak kartu nama 1 muka bahan Art Carton 260gr (100 lbr),35000,100,product,Percetakan
+Cetak ID Card PVC,Cetak ID card / kartu pegawai bahan PVC tebal,15000,200,product,Percetakan
+Laminating A4/F4,Laminating dokumen ukuran KTP hingga F4,5000,500,service,Percetakan
+Map Plastik Snail,Map plastik jepit folder bening,4000,200,product,ATK
+Map Kertas Biasa,Map kertas folio warna warni,1500,500,product,ATK
+Map Tulang / Business File,Map plastik dengan kawat/tulang,5000,150,product,ATK
+Staples Kenko HD-10,Staples ukuran kecil standar,12000,50,product,ATK
+Isi Staples Joyko No.10,Isi ulang staples ukuran HD-10,2500,200,product,ATK
+Isi Staples Max No.10,Isi ulang staples kualitas super,4000,100,product,ATK
+Cetak Brosur A4 (1 Rim),Cetak brosur full color 1 sisi bahan Art Paper 120gr,350000,10,product,Percetakan
+Cetak Stiker Bontax (A3+),Cetak stiker bahan Bontax / Chromo ukuran A3+ (print & cut),15000,500,product,Percetakan
+Cetak Stiker Vinyl (A3+),Cetak stiker anti air bahan Vinyl ukuran A3+ (print & cut),25000,500,product,Percetakan
+Buku Kwitansi Paperline,Buku bukti pembayaran standar,6500,100,product,ATK
+Buku Nota Kontan 2 Rangkap,Buku nota dengan carbonless copy,8000,100,product,ATK
+Kalkulator Citizen CT-512,Kalkulator dagang 12 digit standar,45000,30,product,ATK

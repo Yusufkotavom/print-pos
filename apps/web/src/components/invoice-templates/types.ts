@@ -9,7 +9,7 @@ export interface InvoicePDFProps {
 		customer?: {
 			name: string;
 			email?: string | null;
-			phone: string;
+			phone?: string;
 			address?: string | null;
 		} | null;
 		orderItems?: Array<{
@@ -18,6 +18,7 @@ export interface InvoicePDFProps {
 			item_type: string;
 			quantity: number;
 			price: number;
+			note?: string | null;
 			product?: { name: string } | null;
 		}> | null;
 	};
@@ -33,6 +34,7 @@ export interface InvoicePDFProps {
 		postal_code: string;
 		invoice_terms?: string | null;
 		invoice_template?: string | null;
+		whatsapp_template?: string | null;
 		receipt_header?: string | null;
 		receipt_footer?: string | null;
 	} | null;

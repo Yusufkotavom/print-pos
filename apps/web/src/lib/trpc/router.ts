@@ -4,6 +4,7 @@ import { citiesRouter } from "./routers/cities";
 import { companySettingsRouter } from "./routers/company-settings";
 import { customersRouter } from "./routers/customers";
 import { dashboardRouter } from "./routers/dashboard";
+import { financialReportsRouter } from "./routers/financial-reports";
 import { ordersRouter } from "./routers/orders";
 import { paymentMethodsRouter } from "./routers/payment-methods";
 import { productCategoriesRouter } from "./routers/product-categories";
@@ -20,6 +21,7 @@ export const appRouter = router({
 	transactionCategories: transactionCategoriesRouter,
 	paymentMethods: paymentMethodsRouter,
 	dashboard: dashboardRouter,
+	financialReports: financialReportsRouter,
 	companySettings: companySettingsRouter,
 	cities: citiesRouter,
 });

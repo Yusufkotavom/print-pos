@@ -37,6 +37,7 @@ beforeAll(async () => {
 		.values({
 			name: "Test Product",
 			price: 1000,
+			cost: 500,
 			in_stock: 50,
 			user_uid: "user-1",
 		})

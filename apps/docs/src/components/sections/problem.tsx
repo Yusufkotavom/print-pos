@@ -2,7 +2,6 @@ import { getTranslations } from "@/lib/translations-server";
 import type { Messages } from "@/messages/en";
 
 export default function Problem({
-	locale,
 	messages,
 }: {
 	locale: string;

@@ -30,31 +30,51 @@ import {
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+	CheckCircle2Icon,
+	FileTextIcon,
 	Loader2Icon,
 	MinusIcon,
 	PlusCircle,
 	PlusIcon,
+	PrinterIcon,
 	SearchIcon,
 	Trash2Icon,
-	CheckCircle2Icon,
-	PrinterIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod/v4";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
-import Link from "next/link";
 
 type Product = RouterOutputs["products"]["list"][number];
 type POSProduct = Pick<
 	Product,
-	"id" | "name" | "price" | "in_stock" | "product_type"
+	| "id"
+	| "name"
+	| "price"
+	| "in_stock"
+	| "product_type"
+	| "wholesale_price"
+	| "wholesale_min_qty"
 > & {
 	category: string;
 	quantity: number;
+	note?: string;
+};
+
+type SuccessOrder = {
+	id: number;
+	order_number: string | null;
+	created_at: Date | null;
+	total_amount: number;
+	paid_amount: number;
+	payment_status: string;
+	customer: { id: number; name: string; phone?: string } | null;
+	items: POSProduct[];
+	paymentMethodName?: string;
 };
 
 export default function POSPage() {
@@ -87,7 +107,7 @@ export default function POSPage() {
 
 	const loading = loadingProducts || loadingCustomers || loadingMethods;
 
-	const [successOrder, setSuccessOrder] = useState<any | null>(null);
+	const [successOrder, setSuccessOrder] = useState<SuccessOrder | null>(null);
 
 	const { data: companySettings } = useQuery(
 		trpc.companySettings.get.queryOptions(),
@@ -106,7 +126,9 @@ export default function POSPage() {
 					total_amount: order.total_amount,
 					paid_amount: order.paid_amount,
 					payment_status: order.payment_status,
-					customer: selectedCustomer,
+					customer: selectedCustomer
+						? { ...selectedCustomer, phone: selectedCustomerPhone }
+						: null,
 					items: [...selectedProducts],
 					paymentMethodName: paymentMethod?.name,
 				});
@@ -215,11 +237,19 @@ export default function POSPage() {
 				{
 					id: product.id,
 					name: product.name,
-					price: product.price,
+					price:
+						product.wholesale_price != null &&
+						product.wholesale_min_qty != null &&
+						1 >= product.wholesale_min_qty
+							? product.wholesale_price
+							: product.price,
 					in_stock: product.in_stock,
 					product_type: product.product_type,
+					wholesale_price: product.wholesale_price,
+					wholesale_min_qty: product.wholesale_min_qty,
 					category: product.category ?? "",
 					quantity: 1,
+					note: "",
 				},
 			]);
 		}
@@ -250,7 +280,39 @@ export default function POSPage() {
 					toast.error(t("limitedUnits", { count: product.in_stock }));
 					return p;
 				}
-				return { ...p, quantity: newQty };
+				// Auto-apply wholesale price based on qty
+				let newPrice = p.price;
+				const source = products.find((pr) => pr.id === p.id);
+				if (
+					source?.wholesale_price != null &&
+					source.wholesale_min_qty != null
+				) {
+					newPrice =
+						newQty >= source.wholesale_min_qty
+							? source.wholesale_price
+							: source.price;
+				}
+				return { ...p, quantity: newQty, price: newPrice };
+			}),
+		);
+	};
+
+	const handlePriceChange = (productId: number, newPriceString: string) => {
+		const parsed = Number.parseFloat(newPriceString);
+		const newPrice = Number.isNaN(parsed) ? 0 : parsed * 100;
+		setSelectedProducts((prev) =>
+			prev.map((p) => {
+				if (p.id !== productId) return p;
+				return { ...p, price: newPrice };
+			}),
+		);
+	};
+
+	const handleNoteChange = (productId: number, newNote: string) => {
+		setSelectedProducts((prev) =>
+			prev.map((p) => {
+				if (p.id !== productId) return p;
+				return { ...p, note: newNote };
 			}),
 		);
 	};
@@ -282,6 +344,7 @@ export default function POSPage() {
 				id: p.id,
 				quantity: p.quantity,
 				price: p.price,
+				note: p.note,
 			})),
 			paidAmount: parsedPaidAmount,
 			total,
@@ -408,9 +471,7 @@ export default function POSPage() {
 								<TableHeader>
 									<TableRow>
 										<TableHead>{tc("name")}</TableHead>
-										<TableHead className="hidden sm:table-cell">
-											{tc("price")}
-										</TableHead>
+										<TableHead>{tc("price")}</TableHead>
 										<TableHead className="hidden md:table-cell">
 											{tc("status")}
 										</TableHead>
@@ -424,11 +485,33 @@ export default function POSPage() {
 										const source = products.find((p) => p.id === product.id);
 										return (
 											<TableRow key={product.id}>
-												<TableCell className="font-medium">
-													{product.name}
+												<TableCell className="py-2 align-top font-medium">
+													<div className="mb-1">{product.name}</div>
+													<Input
+														type="text"
+														placeholder={tc("description")}
+														className="h-7 text-xs"
+														value={product.note || ""}
+														onChange={(e) =>
+															handleNoteChange(product.id, e.target.value)
+														}
+													/>
 												</TableCell>
-												<TableCell className="hidden sm:table-cell">
-													{formatCurrency(product.price, locale)}
+												<TableCell>
+													<div className="flex items-center gap-2">
+														<span className="text-muted-foreground text-sm">
+															Rp
+														</span>
+														<Input
+															type="number"
+															className="h-8 w-24"
+															min={0}
+															value={product.price / 100}
+															onChange={(e) =>
+																handlePriceChange(product.id, e.target.value)
+															}
+														/>
+													</div>
 												</TableCell>
 												<TableCell className="hidden md:table-cell">
 													<Badge
@@ -653,7 +736,7 @@ export default function POSPage() {
 							</DialogTitle>
 						</DialogHeader>
 						<div className="space-y-4 py-4">
-							<p className="text-sm text-muted-foreground text-center">
+							<p className="text-center text-muted-foreground text-sm">
 								Transaksi{" "}
 								<strong>
 									{successOrder.order_number ?? `#${successOrder.id}`}
@@ -662,8 +745,8 @@ export default function POSPage() {
 							</p>
 
 							{/* Preview struk di layar */}
-							<div className="border p-4 rounded bg-muted/20 font-mono text-xs max-h-56 overflow-y-auto">
-								<div className="text-center font-bold mb-2">
+							<div className="max-h-56 overflow-y-auto rounded border bg-muted/20 p-4 font-mono text-xs">
+								<div className="mb-2 text-center font-bold">
 									PRATINJAU STRUK
 								</div>
 								<div className="flex justify-between">
@@ -688,11 +771,18 @@ export default function POSPage() {
 								</div>
 								<hr className="my-2 border-dashed" />
 								<div className="space-y-1">
-									{successOrder.items.map((item: any) => (
+									{successOrder.items.map((item) => (
 										<div key={item.id} className="flex justify-between">
-											<span>
-												{item.name} x{item.quantity}
-											</span>
+											<div className="flex flex-col">
+												<span>
+													{item.name} x{item.quantity}
+												</span>
+												{item.note && (
+													<span className="ml-2 text-[10px] text-muted-foreground">
+														- {item.note}
+													</span>
+												)}
+											</div>
 											<span>
 												Rp{" "}
 												{((item.price * item.quantity) / 100).toLocaleString(
@@ -719,7 +809,7 @@ export default function POSPage() {
 								</div>
 							</div>
 						</div>
-						<DialogFooter className="flex flex-col sm:flex-row gap-2">
+						<DialogFooter className="mt-4 flex flex-col flex-wrap gap-2 sm:flex-row sm:justify-center">
 							<Button
 								variant="outline"
 								className="w-full sm:w-auto"
@@ -730,6 +820,62 @@ export default function POSPage() {
 								<PrinterIcon className="mr-2 h-4 w-4" />
 								Cetak Struk
 							</Button>
+
+							<Button
+								variant="outline"
+								className="w-full sm:w-auto"
+								onClick={() => {
+									window.open(`/api/orders/${successOrder.id}/pdf`, "_blank");
+								}}
+							>
+								<FileTextIcon className="mr-2 h-4 w-4" />
+								Print Invoice
+							</Button>
+
+							<Button
+								variant="outline"
+								className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 sm:w-auto"
+								onClick={() => {
+									const customerPhone = successOrder.customer?.phone;
+									if (customerPhone) {
+										const cleanPhone = customerPhone.replace(/[^0-9]/g, "");
+										const waPhone = cleanPhone.startsWith("0")
+											? `62${cleanPhone.substring(1)}`
+											: cleanPhone;
+
+										const template =
+											companySettings?.whatsapp_template ||
+											"Halo! Pesanan Anda {order_number} telah berhasil diproses. Anda bisa mengecek invoice melalui tautan berikut: {invoice_url} \nTerima kasih!";
+										const orderNum =
+											successOrder.order_number ?? `#${successOrder.id}`;
+										const invoiceUrl = `${window.location.origin}/api/orders/${successOrder.id}/pdf`;
+
+										const whatsappText = template
+											.replace(/{order_number}/g, orderNum)
+											.replace(/{invoice_url}/g, invoiceUrl);
+
+										window.open(
+											`https://wa.me/${waPhone}?text=${encodeURIComponent(whatsappText)}`,
+											"_blank",
+										);
+									} else {
+										toast.error(
+											"Nomor WhatsApp pelanggan tidak tersedia untuk transaksi ini.",
+										);
+									}
+								}}
+							>
+								<svg
+									className="mr-2 h-4 w-4"
+									fill="currentColor"
+									viewBox="0 0 24 24"
+									aria-label="WhatsApp"
+								>
+									<path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z" />
+								</svg>
+								WhatsApp
+							</Button>
+
 							<Link
 								href={`/admin/orders/${successOrder.id}`}
 								className="w-full sm:w-auto"
@@ -753,7 +899,7 @@ export default function POSPage() {
 			{successOrder && (
 				<div
 					id="thermal-receipt"
-					className="hidden print:block print:absolute print:top-0 print:left-0 print:w-[80mm] print:bg-white print:text-black print:p-4 font-mono text-[10px] leading-tight"
+					className="hidden font-mono text-[10px] leading-tight print:absolute print:top-0 print:left-0 print:block print:w-[80mm] print:bg-white print:p-4 print:text-black"
 				>
 					<style
 						dangerouslySetInnerHTML={{
@@ -781,7 +927,7 @@ export default function POSPage() {
 					`,
 						}}
 					/>
-					<div className="text-center border-b pb-2 mb-2">
+					<div className="mb-2 border-b pb-2 text-center">
 						<h2 className="font-bold text-sm uppercase">
 							{companySettings?.company_name || "FinOpenPOS"}
 						</h2>
@@ -796,12 +942,12 @@ export default function POSPage() {
 						</p>
 						{companySettings?.tax_id && <p>NPWP: {companySettings.tax_id}</p>}
 						{companySettings?.receipt_header && (
-							<p className="text-[9px] italic mt-1 border-t border-dashed pt-1">
+							<p className="mt-1 border-t border-dashed pt-1 text-[9px] italic">
 								{companySettings.receipt_header}
 							</p>
 						)}
 					</div>
-					<div className="space-y-1 mb-2">
+					<div className="mb-2 space-y-1">
 						<p>No: {successOrder.order_number ?? `#${successOrder.id}`}</p>
 						<p>
 							Tgl:{" "}
@@ -811,8 +957,8 @@ export default function POSPage() {
 						</p>
 						<p>Pelanggan: {successOrder.customer?.name || "Pelanggan Umum"}</p>
 					</div>
-					<div className="border-t border-b border-dashed py-2 my-2 space-y-1">
-						{successOrder.items.map((item: any) => (
+					<div className="my-2 space-y-1 border-t border-b border-dashed py-2">
+						{successOrder.items.map((item) => (
 							<div key={item.id} className="flex justify-between">
 								<div className="max-w-[70%]">
 									<p>{item.name}</p>
@@ -852,7 +998,7 @@ export default function POSPage() {
 							</p>
 						</div>
 					</div>
-					<div className="text-center border-t border-dashed pt-2 mt-4">
+					<div className="mt-4 border-t border-dashed pt-2 text-center">
 						{companySettings?.receipt_footer ? (
 							<p>{companySettings.receipt_footer}</p>
 						) : (

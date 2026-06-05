@@ -202,6 +202,7 @@ describe("products.delete", () => {
 				product_id: p.id,
 				quantity: 1,
 				price: 100,
+				cost: 50,
 			})
 			.returning();
 

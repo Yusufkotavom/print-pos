@@ -11,7 +11,6 @@ const techs = [
 ] as const;
 
 export default function TechStack({
-	locale,
 	messages,
 }: {
 	locale: string;

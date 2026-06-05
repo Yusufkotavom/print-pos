@@ -1,8 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
-import { useForm } from "@tanstack/react-form";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@finopenpos/ui/components/button";
 import {
 	Card,
@@ -27,8 +24,12 @@ import {
 	TabsTrigger,
 } from "@finopenpos/ui/components/tabs";
 import { Textarea } from "@finopenpos/ui/components/textarea";
-import { toast } from "sonner";
+import { useForm } from "@tanstack/react-form";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Eye } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useEffect } from "react";
+import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
 
 const PROVINCE_OPTIONS = [
@@ -79,7 +80,7 @@ export default function CompanySettingsPage() {
 	const queryClient = useQueryClient();
 	const { data: settings, isLoading } = useQuery(
 		trpc.companySettings.get.queryOptions(),
-	) as { data: any; isLoading: boolean };
+	);
 	const t = useTranslations("companySettings");
 	const tc = useTranslations("common");
 
@@ -114,6 +115,9 @@ export default function CompanySettingsPage() {
 			receipt_footer: settings?.receipt_footer ?? "",
 			invoice_terms: settings?.invoice_terms ?? "",
 			invoice_template: settings?.invoice_template ?? "standard",
+			whatsapp_template:
+				settings?.whatsapp_template ??
+				"Halo! Pesanan Anda {order_number} telah berhasil diproses. Anda bisa mengecek invoice melalui tautan berikut: {invoice_url} \nTerima kasih!",
 		},
 		onSubmit: ({ value }) => {
 			upsertMutation.mutate({
@@ -136,6 +140,7 @@ export default function CompanySettingsPage() {
 				receipt_footer: value.receipt_footer || undefined,
 				invoice_terms: value.invoice_terms || undefined,
 				invoice_template: value.invoice_template || undefined,
+				whatsapp_template: value.whatsapp_template || undefined,
 			});
 		},
 	});
@@ -161,7 +166,15 @@ export default function CompanySettingsPage() {
 		form.setFieldValue("receipt_header", settings.receipt_header ?? "");
 		form.setFieldValue("receipt_footer", settings.receipt_footer ?? "");
 		form.setFieldValue("invoice_terms", settings.invoice_terms ?? "");
-		form.setFieldValue("invoice_template", settings.invoice_template ?? "standard");
+		form.setFieldValue(
+			"invoice_template",
+			settings.invoice_template ?? "standard",
+		);
+		form.setFieldValue(
+			"whatsapp_template",
+			settings.whatsapp_template ??
+				"Halo! Pesanan Anda {order_number} telah berhasil diproses. Anda bisa mengecek invoice melalui tautan berikut: {invoice_url} \nTerima kasih!",
+		);
 	}, [form, settings]);
 
 	if (isLoading) return null;
@@ -173,243 +186,305 @@ export default function CompanySettingsPage() {
 				e.stopPropagation();
 				form.handleSubmit();
 			}}
-			className="space-y-6 max-w-3xl"
+			className="max-w-3xl space-y-6"
 		>
 			<Tabs defaultValue="general" className="w-full">
-				<TabsList className="grid w-full grid-cols-2 mb-6">
+				<TabsList className="mb-6 grid w-full grid-cols-2">
 					<TabsTrigger value="general">{t("companyInfo")}</TabsTrigger>
 					<TabsTrigger value="documents">{t("documentSettings")}</TabsTrigger>
 				</TabsList>
-				
+
 				<TabsContent value="general" className="space-y-6">
 					<Card>
 						<CardHeader>
 							<CardTitle>{t("companyInfo")}</CardTitle>
-				</CardHeader>
-				<CardContent className="grid gap-4">
-					<div className="grid gap-4 sm:grid-cols-2">
-						<form.Field name="company_name">
-							{(field) => (
-								<FormTextField field={field} label={t("companyName")} />
-							)}
-						</form.Field>
-						<form.Field name="trade_name">
-							{(field) => (
-								<FormTextField field={field} label={t("tradeName")} />
-							)}
-						</form.Field>
-					</div>
-					<div className="grid gap-4 sm:grid-cols-3">
-						<form.Field name="tax_id">
-							{(field) => <FormTextField field={field} label={t("taxId")} />}
-						</form.Field>
-						<form.Field name="business_license">
-							{(field) => (
-								<FormTextField field={field} label={t("stateTaxId")} />
-							)}
-						</form.Field>
-						<form.Field name="business_type">
-							{(field) => (
-								<div className="space-y-2">
-									<Label>{t("taxRegime")}</Label>
-									<Select
-										value={field.state.value}
-										onValueChange={field.handleChange}
-									>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="1">{t("taxRegimeUmkm")}</SelectItem>
-											<SelectItem value="2">{t("taxRegimePkP")}</SelectItem>
-											<SelectItem value="3">
-												{t("taxRegimeEnterprise")}
-											</SelectItem>
-										</SelectContent>
-									</Select>
-								</div>
-							)}
-						</form.Field>
-					</div>
-				</CardContent>
-			</Card>
-
-			<Card>
-				<CardHeader>
-					<CardTitle>{t("localization")}</CardTitle>
-				</CardHeader>
-				<CardContent className="grid gap-4 sm:grid-cols-2">
-					<form.Field name="currency">
-						{(field) => (
-							<div className="space-y-2">
-								<Label>{t("currency")}</Label>
-								<Select
-									value={field.state.value}
-									onValueChange={field.handleChange}
-								>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="IDR">IDR - Rupiah Indonesia</SelectItem>
-									</SelectContent>
-								</Select>
+						</CardHeader>
+						<CardContent className="grid gap-4">
+							<div className="grid gap-4 sm:grid-cols-2">
+								<form.Field name="company_name">
+									{(field) => (
+										<FormTextField field={field} label={t("companyName")} />
+									)}
+								</form.Field>
+								<form.Field name="trade_name">
+									{(field) => (
+										<FormTextField field={field} label={t("tradeName")} />
+									)}
+								</form.Field>
 							</div>
-						)}
-					</form.Field>
-					<form.Field name="timezone">
-						{(field) => (
-							<div className="space-y-2">
-								<Label>{t("timezone")}</Label>
-								<Select
-									value={field.state.value}
-									onValueChange={field.handleChange}
-								>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{TIMEZONE_OPTIONS.map((timezone) => (
-											<SelectItem key={timezone.id} value={timezone.id}>
-												{timezone.name}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+							<div className="grid gap-4 sm:grid-cols-3">
+								<form.Field name="tax_id">
+									{(field) => (
+										<FormTextField field={field} label={t("taxId")} />
+									)}
+								</form.Field>
+								<form.Field name="business_license">
+									{(field) => (
+										<FormTextField field={field} label={t("stateTaxId")} />
+									)}
+								</form.Field>
+								<form.Field name="business_type">
+									{(field) => (
+										<div className="space-y-2">
+											<Label>{t("taxRegime")}</Label>
+											<Select
+												value={field.state.value}
+												onValueChange={field.handleChange}
+											>
+												<SelectTrigger>
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="1">
+														{t("taxRegimeUmkm")}
+													</SelectItem>
+													<SelectItem value="2">{t("taxRegimePkP")}</SelectItem>
+													<SelectItem value="3">
+														{t("taxRegimeEnterprise")}
+													</SelectItem>
+												</SelectContent>
+											</Select>
+										</div>
+									)}
+								</form.Field>
 							</div>
-						)}
-					</form.Field>
-				</CardContent>
-			</Card>
+						</CardContent>
+					</Card>
 
-			<Card>
-				<CardHeader>
-					<CardTitle>{t("address")}</CardTitle>
-				</CardHeader>
-				<CardContent className="grid gap-4">
-					<div className="grid gap-4 sm:grid-cols-3">
-						<form.Field name="postal_code">
-							{(field) => <FormTextField field={field} label={t("zipCode")} />}
-						</form.Field>
-						<form.Field name="province_code">
-							{(field) => (
-								<div className="space-y-2">
-									<Label>{t("stateCode")}</Label>
-									<Select
-										value={field.state.value}
-										onValueChange={field.handleChange}
-									>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{PROVINCE_OPTIONS.map((province) => (
-												<SelectItem key={province.id} value={province.id}>
-													{province.name}
+					<Card>
+						<CardHeader>
+							<CardTitle>{t("localization")}</CardTitle>
+						</CardHeader>
+						<CardContent className="grid gap-4 sm:grid-cols-2">
+							<form.Field name="currency">
+								{(field) => (
+									<div className="space-y-2">
+										<Label>{t("currency")}</Label>
+										<Select
+											value={field.state.value}
+											onValueChange={field.handleChange}
+										>
+											<SelectTrigger>
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="IDR">
+													IDR - Rupiah Indonesia
 												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-								</div>
-							)}
-						</form.Field>
-						<form.Field name="city_name">
-							{(field) => <FormTextField field={field} label={t("cityName")} />}
-						</form.Field>
-					</div>
-					<form.Field name="city_code">
-						{(field) => <FormTextField field={field} label={t("cityCode")} />}
-					</form.Field>
-					<div className="grid gap-4 sm:grid-cols-4">
-						<form.Field name="street">
-							{(field) => (
-								<div className="space-y-2 sm:col-span-2">
-									<Label>{t("street")}</Label>
-									<Input
-										value={field.state.value}
-										onChange={(e) => field.handleChange(e.target.value)}
-									/>
-								</div>
-							)}
-						</form.Field>
-						<form.Field name="street_number">
-							{(field) => (
-								<FormTextField field={field} label={t("streetNumber")} />
-							)}
-						</form.Field>
-						<form.Field name="district">
-							{(field) => <FormTextField field={field} label={t("district")} />}
-						</form.Field>
-					</div>
-					<form.Field name="address_detail">
-						{(field) => (
-							<FormTextField field={field} label={t("addressComplement")} />
-						)}
-					</form.Field>
-				</CardContent>
-			</Card>
+											</SelectContent>
+										</Select>
+									</div>
+								)}
+							</form.Field>
+							<form.Field name="timezone">
+								{(field) => (
+									<div className="space-y-2">
+										<Label>{t("timezone")}</Label>
+										<Select
+											value={field.state.value}
+											onValueChange={field.handleChange}
+										>
+											<SelectTrigger>
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												{TIMEZONE_OPTIONS.map((timezone) => (
+													<SelectItem key={timezone.id} value={timezone.id}>
+														{timezone.name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									</div>
+								)}
+							</form.Field>
+						</CardContent>
+					</Card>
+
+					<Card>
+						<CardHeader>
+							<CardTitle>{t("address")}</CardTitle>
+						</CardHeader>
+						<CardContent className="grid gap-4">
+							<div className="grid gap-4 sm:grid-cols-3">
+								<form.Field name="postal_code">
+									{(field) => (
+										<FormTextField field={field} label={t("zipCode")} />
+									)}
+								</form.Field>
+								<form.Field name="province_code">
+									{(field) => (
+										<div className="space-y-2">
+											<Label>{t("stateCode")}</Label>
+											<Select
+												value={field.state.value}
+												onValueChange={field.handleChange}
+											>
+												<SelectTrigger>
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													{PROVINCE_OPTIONS.map((province) => (
+														<SelectItem key={province.id} value={province.id}>
+															{province.name}
+														</SelectItem>
+													))}
+												</SelectContent>
+											</Select>
+										</div>
+									)}
+								</form.Field>
+								<form.Field name="city_name">
+									{(field) => (
+										<FormTextField field={field} label={t("cityName")} />
+									)}
+								</form.Field>
+							</div>
+							<form.Field name="city_code">
+								{(field) => (
+									<FormTextField field={field} label={t("cityCode")} />
+								)}
+							</form.Field>
+							<div className="grid gap-4 sm:grid-cols-4">
+								<form.Field name="street">
+									{(field) => (
+										<div className="space-y-2 sm:col-span-2">
+											<Label>{t("street")}</Label>
+											<Input
+												value={field.state.value}
+												onChange={(e) => field.handleChange(e.target.value)}
+											/>
+										</div>
+									)}
+								</form.Field>
+								<form.Field name="street_number">
+									{(field) => (
+										<FormTextField field={field} label={t("streetNumber")} />
+									)}
+								</form.Field>
+								<form.Field name="district">
+									{(field) => (
+										<FormTextField field={field} label={t("district")} />
+									)}
+								</form.Field>
+							</div>
+							<form.Field name="address_detail">
+								{(field) => (
+									<FormTextField field={field} label={t("addressComplement")} />
+								)}
+							</form.Field>
+						</CardContent>
+					</Card>
 				</TabsContent>
 
 				<TabsContent value="documents" className="space-y-6">
 					<Card>
 						<CardHeader>
 							<CardTitle>{t("documentSettings")}</CardTitle>
-				</CardHeader>
-				<CardContent className="grid gap-4">
-					<form.Field name="receipt_header">
-						{(field) => (
-							<FormTextField
-								field={field}
-								label={t("receiptHeader")}
-								placeholder="Contoh: Selamat Datang di Toko Kami!"
-							/>
-						)}
-					</form.Field>
-					<form.Field name="receipt_footer">
-						{(field) => (
-							<FormTextField
-								field={field}
-								label={t("receiptFooter")}
-								placeholder="Contoh: Terima Kasih Atas Kunjungan Anda"
-							/>
-						)}
-					</form.Field>
-					<form.Field name="invoice_terms">
-						{(field) => (
-							<div className="space-y-2">
-								<Label>{t("invoiceTerms")}</Label>
-								<Textarea
-									value={field.state.value}
-									onChange={(e) => field.handleChange(e.target.value)}
-									placeholder="Contoh: Pembayaran jatuh tempo dalam 14 hari."
-									rows={4}
-								/>
-							</div>
-						)}
-					</form.Field>
-					<form.Field name="invoice_template">
-						{(field) => (
-							<div className="space-y-2">
-								<Label>Template Invoice PDF</Label>
-								<Select
-									value={field.state.value}
-									onValueChange={field.handleChange}
-								>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="standard">Standard / Modern</SelectItem>
-										<SelectItem value="elegant">Elegant / Bisnis</SelectItem>
-										<SelectItem value="minimalist">Minimalist</SelectItem>
-										<SelectItem value="receipt">Plain / POS Receipt</SelectItem>
-									</SelectContent>
-								</Select>
-							</div>
-						)}
-					</form.Field>
-				</CardContent>
-			</Card>
+						</CardHeader>
+						<CardContent className="grid gap-4">
+							<form.Field name="receipt_header">
+								{(field) => (
+									<FormTextField
+										field={field}
+										label={t("receiptHeader")}
+										placeholder="Contoh: Selamat Datang di Toko Kami!"
+									/>
+								)}
+							</form.Field>
+							<form.Field name="receipt_footer">
+								{(field) => (
+									<FormTextField
+										field={field}
+										label={t("receiptFooter")}
+										placeholder="Contoh: Terima Kasih Atas Kunjungan Anda"
+									/>
+								)}
+							</form.Field>
+							<form.Field name="invoice_terms">
+								{(field) => (
+									<div className="space-y-2">
+										<Label>{t("invoiceTerms")}</Label>
+										<Textarea
+											value={field.state.value}
+											onChange={(e) => field.handleChange(e.target.value)}
+											placeholder="Contoh: Pembayaran jatuh tempo dalam 14 hari."
+											rows={4}
+										/>
+									</div>
+								)}
+							</form.Field>
+							<form.Field name="invoice_template">
+								{(field) => (
+									<div className="space-y-2">
+										<Label>Template Invoice PDF</Label>
+										<div className="flex items-center gap-2">
+											<Select
+												value={field.state.value}
+												onValueChange={field.handleChange}
+											>
+												<SelectTrigger className="w-full">
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="standard">
+														Standard / Modern
+													</SelectItem>
+													<SelectItem value="elegant">
+														Elegant / Bisnis
+													</SelectItem>
+													<SelectItem value="minimalist">Minimalist</SelectItem>
+													<SelectItem value="receipt">
+														Plain / POS Receipt
+													</SelectItem>
+												</SelectContent>
+											</Select>
+
+											<Button
+												variant="outline"
+												type="button"
+												title="Lihat Contoh"
+												asChild
+											>
+												<a
+													href={`/api/settings/preview-pdf?template=${field.state.value || "standard"}`}
+													target="_blank"
+													rel="noopener noreferrer"
+												>
+													<Eye className="mr-2 h-4 w-4" />
+													Lihat
+												</a>
+											</Button>
+										</div>
+									</div>
+								)}
+							</form.Field>
+							<form.Field name="whatsapp_template">
+								{(field) => (
+									<div className="space-y-2">
+										<Label>Template WhatsApp</Label>
+										<Textarea
+											value={field.state.value}
+											onChange={(e) => field.handleChange(e.target.value)}
+											placeholder="Contoh: Halo! Pesanan Anda {order_number} telah berhasil diproses..."
+											rows={4}
+										/>
+										<p className="text-muted-foreground text-xs">
+											Gunakan{" "}
+											<code className="rounded bg-muted px-1">
+												{"{order_number}"}
+											</code>{" "}
+											untuk nomor order dan{" "}
+											<code className="rounded bg-muted px-1">
+												{"{invoice_url}"}
+											</code>{" "}
+											untuk tautan invoice.
+										</p>
+									</div>
+								)}
+							</form.Field>
+						</CardContent>
+					</Card>
 				</TabsContent>
 			</Tabs>
 

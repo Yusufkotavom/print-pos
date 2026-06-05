@@ -4,7 +4,6 @@ import { useParams } from "next/navigation";
 import { useEffect } from "react";
 
 const COOKIE_NAME = "locale";
-const MAX_AGE = 60 * 60 * 24 * 365;
 
 export function LocaleSync() {
 	const params = useParams();
@@ -12,7 +11,7 @@ export function LocaleSync() {
 
 	useEffect(() => {
 		if (!lang) return;
-		document.cookie = `${COOKIE_NAME}=${lang};path=/;max-age=${MAX_AGE};samesite=lax`;
+		window.localStorage.setItem(COOKIE_NAME, lang);
 	}, [lang]);
 
 	return null;

@@ -212,7 +212,10 @@ erDiagram
         varchar name
         text description
         integer price
+        integer cost
         integer in_stock
+        integer wholesale_price
+        integer wholesale_min_qty
         varchar product_type
         varchar user_uid
         varchar category
@@ -256,6 +259,8 @@ erDiagram
         varchar item_type
         integer quantity
         integer price
+        integer cost
+        text note
         timestamp created_at
     }
 

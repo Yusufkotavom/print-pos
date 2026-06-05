@@ -31,9 +31,22 @@ import {
 	SelectValue,
 } from "@finopenpos/ui/components/select";
 import { Skeleton } from "@finopenpos/ui/components/skeleton";
+import {
+	Tabs,
+	TabsContent,
+	TabsList,
+	TabsTrigger,
+} from "@finopenpos/ui/components/tabs";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FilePenIcon, PackageIcon, PlusIcon, TrashIcon } from "lucide-react";
+import {
+	FilePenIcon,
+	FileUpIcon,
+	PackageIcon,
+	PlusIcon,
+	TrashIcon,
+} from "lucide-react";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -65,8 +78,11 @@ export default function Products() {
 		description: z.string(),
 		product_type: z.enum(["product", "service"]),
 		price: z.number().min(0, t("priceMustBePositive")),
+		cost: z.number().min(0, t("priceMustBePositive")),
 		in_stock: z.number().int().min(0, t("stockMustBeNonNegative")),
 		category: z.string(),
+		wholesale_price: z.number().min(0).nullable(),
+		wholesale_min_qty: z.number().int().min(1).nullable(),
 	});
 
 	const categoryFilterOptions: FilterOption[] = [
@@ -105,11 +121,19 @@ export default function Products() {
 			accessorFn: (row) => row.price,
 			render: (row) => formatCurrency(row.price, locale),
 		},
+		{
+			key: "cost",
+			header: "HPP",
+			sortable: true,
+			accessorFn: (row) => row.cost,
+			render: (row) => formatCurrency(row.cost, locale),
+		},
 		{ key: "in_stock", header: t("stock"), sortable: true },
 	];
 
 	const exportColumns: ExportColumn<Product>[] = [
-		{ key: "name", header: tc("name"), getValue: (p) => p.name },
+		{ key: "id", header: "id", getValue: (p) => p.id },
+		{ key: "name", header: t("product"), getValue: (p) => p.name },
 		{
 			key: "description",
 			header: tc("description"),
@@ -119,6 +143,11 @@ export default function Products() {
 			key: "price",
 			header: tc("price"),
 			getValue: (p) => (p.price / 100).toFixed(2),
+		},
+		{
+			key: "cost",
+			header: "HPP",
+			getValue: (p) => (p.cost / 100).toFixed(2),
 		},
 		{
 			key: "product_type",
@@ -188,9 +217,12 @@ export default function Products() {
 			name: "",
 			description: "",
 			price: 0,
+			cost: 0,
 			product_type: "product" as ProductType,
 			in_stock: 0,
 			category: "",
+			wholesale_price: null as number | null,
+			wholesale_min_qty: null as number | null,
 		},
 		validators: {
 			onSubmit: productFormSchema,
@@ -201,9 +233,15 @@ export default function Products() {
 				name: value.name,
 				description: value.description || undefined,
 				price: Math.round(value.price * 100),
+				cost: Math.round(value.cost * 100),
 				in_stock: inStock,
 				product_type: value.product_type,
 				category: value.category || undefined,
+				wholesale_price:
+					value.wholesale_price != null
+						? Math.round(value.wholesale_price * 100)
+						: undefined,
+				wholesale_min_qty: value.wholesale_min_qty ?? undefined,
 			};
 
 			if (isEditing) {
@@ -233,21 +271,21 @@ export default function Products() {
 		});
 	}, [products, categoryFilter, stockFilter, searchTerm]);
 
-	const openCreate = () => {
-		setEditingId(null);
-		form.reset();
-		setIsDialogOpen(true);
-	};
-
 	const openEdit = (p: Product) => {
 		setEditingId(p.id);
 		form.reset();
 		form.setFieldValue("name", p.name);
 		form.setFieldValue("description", p.description ?? "");
 		form.setFieldValue("price", p.price / 100);
+		form.setFieldValue("cost", p.cost / 100);
 		form.setFieldValue("product_type", p.product_type as ProductType);
 		form.setFieldValue("in_stock", p.in_stock);
 		form.setFieldValue("category", p.category ?? "");
+		form.setFieldValue(
+			"wholesale_price",
+			p.wholesale_price != null ? p.wholesale_price / 100 : null,
+		);
+		form.setFieldValue("wholesale_min_qty", p.wholesale_min_qty ?? null);
 		setIsDialogOpen(true);
 	};
 
@@ -327,16 +365,73 @@ export default function Products() {
 							},
 						]}
 					>
-						<div className="flex gap-2">
+						<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
 							<Button
 								size="sm"
 								variant="outline"
 								onClick={() => setIsCategoryDialogOpen(true)}
+								className="w-full whitespace-nowrap sm:w-auto"
 							>
-								<PlusIcon className="mr-2 h-4 w-4" />
+								<PackageIcon className="mr-2 h-4 w-4" />
 								{t("addCategory")}
 							</Button>
-							<Button size="sm" onClick={openCreate}>
+
+							<Button
+								variant="outline"
+								size="sm"
+								asChild
+								className="w-full whitespace-nowrap sm:w-auto"
+							>
+								<Link href="/admin/products/import">
+									<FileUpIcon className="mr-2 h-4 w-4" />
+									Import CSV
+								</Link>
+							</Button>
+
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={() => {
+									const BOM = "\uFEFF";
+									const header = exportColumns
+										.map((c) => `"${c.header}"`)
+										.join(",");
+									const rows = filteredProducts.map((item) =>
+										exportColumns
+											.map((c) => {
+												const val = c.getValue(item);
+												return typeof val === "string"
+													? `"${val.replace(/"/g, '""')}"`
+													: val;
+											})
+											.join(","),
+									);
+									const csv = BOM + [header, ...rows].join("\n");
+									const blob = new Blob([csv], {
+										type: "text/csv;charset=utf-8",
+									});
+									const url = URL.createObjectURL(blob);
+									const a = document.createElement("a");
+									a.href = url;
+									a.download = `products-export-${Date.now()}.csv`;
+									document.body.appendChild(a);
+									a.click();
+									setTimeout(() => {
+										document.body.removeChild(a);
+										URL.revokeObjectURL(url);
+									}, 150);
+								}}
+								className="w-full whitespace-nowrap sm:w-auto"
+							>
+								<FileUpIcon className="mr-2 h-4 w-4 rotate-180" />
+								Export CSV
+							</Button>
+
+							<Button
+								size="sm"
+								onClick={() => setIsDialogOpen(true)}
+								className="w-full whitespace-nowrap sm:w-auto"
+							>
 								<PlusIcon className="mr-2 h-4 w-4" />
 								{t("addProduct")}
 							</Button>
@@ -347,8 +442,6 @@ export default function Products() {
 					<DataTable
 						data={filteredProducts}
 						columns={[...columns, actionsColumn]}
-						exportColumns={exportColumns}
-						exportFilename="products"
 						emptyMessage={t("noProducts")}
 						emptyIcon={<PackageIcon className="h-8 w-8" />}
 						defaultSort={[{ id: "name", desc: false }]}
@@ -378,152 +471,265 @@ export default function Products() {
 							form.handleSubmit();
 						}}
 					>
-						<div className="grid gap-4 py-4">
-							<form.Field name="name">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="name" className="sm:text-right">
-											{tc("name")}
-										</Label>
-										<div className="col-span-3">
-											<Input
-												id="name"
-												value={field.state.value}
-												onChange={(e) => field.handleChange(e.target.value)}
-												onBlur={field.handleBlur}
-												error={
-													field.state.meta.errors.length > 0
-														? field.state.meta.errors
-																.map((e) => e?.message ?? e)
-																.join(", ")
-														: undefined
-												}
-											/>
-										</div>
-									</div>
-								)}
-							</form.Field>
-							<form.Field name="description">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="description" className="sm:text-right">
-											{tc("description")}
-										</Label>
-										<Input
-											id="description"
-											value={field.state.value}
-											onChange={(e) => field.handleChange(e.target.value)}
-											className="col-span-3"
-										/>
-									</div>
-								)}
-							</form.Field>
-							<form.Field name="price">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="price" className="sm:text-right">
-											{tc("price")}
-										</Label>
-										<div className="col-span-3">
-											<Input
-												id="price"
-												type="number"
-												step="0.01"
-												value={field.state.value}
-												onChange={(e) =>
-													field.handleChange(Number(e.target.value))
-												}
-												onBlur={field.handleBlur}
-												error={
-													field.state.meta.errors.length > 0
-														? field.state.meta.errors
-																.map((e) => e?.message ?? e)
-																.join(", ")
-														: undefined
-												}
-											/>
-										</div>
-									</div>
-								)}
-							</form.Field>
-							<form.Field name="product_type">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="product_type" className="sm:text-right">
-											{t("type")}
-										</Label>
-										<Select
-											value={field.state.value}
-											onValueChange={(value) =>
-												field.handleChange(value as ProductType)
-											}
-										>
-											<SelectTrigger className="col-span-3">
-												<SelectValue />
-											</SelectTrigger>
-											<SelectContent>
-												<SelectItem value="product">
-													{t("physicalProduct")}
-												</SelectItem>
-												<SelectItem value="service">{t("service")}</SelectItem>
-											</SelectContent>
-										</Select>
-									</div>
-								)}
-							</form.Field>
-							<form.Field name="in_stock">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="in_stock" className="sm:text-right">
-											{t("inStock")}
-										</Label>
-										<div className="col-span-3">
-											<Input
-												id="in_stock"
-												type="number"
-												value={field.state.value}
-												onChange={(e) =>
-													field.handleChange(Number(e.target.value))
-												}
-												onBlur={field.handleBlur}
-												error={
-													field.state.meta.errors.length > 0
-														? field.state.meta.errors
-																.map((e) => e?.message ?? e)
-																.join(", ")
-														: undefined
-												}
-											/>
-										</div>
-									</div>
-								)}
-							</form.Field>
-							<form.Field name="category">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="category" className="sm:text-right">
-											{tc("category")}
-										</Label>
-										<Select
-											value={field.state.value}
-											onValueChange={(value) => field.handleChange(value)}
-										>
-											<SelectTrigger className="col-span-3">
-												<SelectValue placeholder={t("selectCategory")} />
-											</SelectTrigger>
-											<SelectContent>
-												{categories.map((category) => (
-													<SelectItem key={category.id} value={category.name}>
-														{category.name}
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
-									</div>
-								)}
-							</form.Field>
-						</div>
-						<DialogFooter>
+						<Tabs defaultValue="info">
+							<TabsList className="mb-4 w-full">
+								<TabsTrigger value="info">Info Dasar</TabsTrigger>
+								<TabsTrigger value="wholesale">Harga Grosir</TabsTrigger>
+							</TabsList>
+
+							<TabsContent value="info">
+								<div className="grid gap-4 py-2">
+									<form.Field name="name">
+										{(field) => (
+											<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+												<Label htmlFor="name" className="sm:text-right">
+													{tc("name")}
+												</Label>
+												<div className="col-span-3">
+													<Input
+														id="name"
+														value={field.state.value}
+														onChange={(e) => field.handleChange(e.target.value)}
+														onBlur={field.handleBlur}
+														error={
+															field.state.meta.errors.length > 0
+																? field.state.meta.errors
+																		.map((e) => e?.message ?? e)
+																		.join(", ")
+																: undefined
+														}
+													/>
+												</div>
+											</div>
+										)}
+									</form.Field>
+									<form.Field name="description">
+										{(field) => (
+											<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+												<Label htmlFor="description" className="sm:text-right">
+													{tc("description")}
+												</Label>
+												<Input
+													id="description"
+													value={field.state.value}
+													onChange={(e) => field.handleChange(e.target.value)}
+													className="col-span-3"
+												/>
+											</div>
+										)}
+									</form.Field>
+									<form.Field name="price">
+										{(field) => (
+											<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+												<Label htmlFor="price" className="sm:text-right">
+													{tc("price")}
+												</Label>
+												<div className="col-span-3">
+													<Input
+														id="price"
+														type="number"
+														step="0.01"
+														value={field.state.value}
+														onChange={(e) =>
+															field.handleChange(Number(e.target.value))
+														}
+														onBlur={field.handleBlur}
+														error={
+															field.state.meta.errors.length > 0
+																? field.state.meta.errors
+																		.map((e) => e?.message ?? e)
+																		.join(", ")
+																: undefined
+														}
+													/>
+												</div>
+											</div>
+										)}
+									</form.Field>
+									<form.Field name="cost">
+										{(field) => (
+											<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+												<Label htmlFor="cost" className="sm:text-right">
+													HPP
+												</Label>
+												<div className="col-span-3">
+													<Input
+														id="cost"
+														type="number"
+														step="0.01"
+														value={field.state.value}
+														onChange={(e) =>
+															field.handleChange(Number(e.target.value))
+														}
+														onBlur={field.handleBlur}
+														error={
+															field.state.meta.errors.length > 0
+																? field.state.meta.errors
+																		.map((e) => e?.message ?? e)
+																		.join(", ")
+																: undefined
+														}
+													/>
+												</div>
+											</div>
+										)}
+									</form.Field>
+									<form.Field name="product_type">
+										{(field) => (
+											<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+												<Label htmlFor="product_type" className="sm:text-right">
+													{t("type")}
+												</Label>
+												<Select
+													value={field.state.value}
+													onValueChange={(value) =>
+														field.handleChange(value as ProductType)
+													}
+												>
+													<SelectTrigger className="col-span-3">
+														<SelectValue />
+													</SelectTrigger>
+													<SelectContent>
+														<SelectItem value="product">
+															{t("physicalProduct")}
+														</SelectItem>
+														<SelectItem value="service">
+															{t("service")}
+														</SelectItem>
+													</SelectContent>
+												</Select>
+											</div>
+										)}
+									</form.Field>
+									<form.Field name="in_stock">
+										{(field) => (
+											<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+												<Label htmlFor="in_stock" className="sm:text-right">
+													{t("inStock")}
+												</Label>
+												<div className="col-span-3">
+													<Input
+														id="in_stock"
+														type="number"
+														value={field.state.value}
+														onChange={(e) =>
+															field.handleChange(Number(e.target.value))
+														}
+														onBlur={field.handleBlur}
+														error={
+															field.state.meta.errors.length > 0
+																? field.state.meta.errors
+																		.map((e) => e?.message ?? e)
+																		.join(", ")
+																: undefined
+														}
+													/>
+												</div>
+											</div>
+										)}
+									</form.Field>
+									<form.Field name="category">
+										{(field) => (
+											<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+												<Label htmlFor="category" className="sm:text-right">
+													{tc("category")}
+												</Label>
+												<Select
+													value={field.state.value}
+													onValueChange={(value) => field.handleChange(value)}
+												>
+													<SelectTrigger className="col-span-3">
+														<SelectValue placeholder={t("selectCategory")} />
+													</SelectTrigger>
+													<SelectContent>
+														{categories.map((category) => (
+															<SelectItem
+																key={category.id}
+																value={category.name}
+															>
+																{category.name}
+															</SelectItem>
+														))}
+													</SelectContent>
+												</Select>
+											</div>
+										)}
+									</form.Field>
+								</div>
+							</TabsContent>
+
+							<TabsContent value="wholesale">
+								<div className="grid gap-5 py-4">
+									<p className="text-muted-foreground text-sm">
+										Atur harga khusus ketika pelanggan membeli dalam jumlah
+										banyak. Harga grosir akan otomatis diterapkan di POS saat
+										qty mencapai minimum.
+									</p>
+									<form.Field name="wholesale_price">
+										{(field) => (
+											<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+												<Label
+													htmlFor="wholesale_price"
+													className="sm:text-right"
+												>
+													Harga Grosir (Rp)
+												</Label>
+												<div className="col-span-3">
+													<Input
+														id="wholesale_price"
+														type="number"
+														step="0.01"
+														min={0}
+														placeholder="Contoh: 9500"
+														value={field.state.value ?? ""}
+														onChange={(e) =>
+															field.handleChange(
+																e.target.value === ""
+																	? null
+																	: Number(e.target.value),
+															)
+														}
+													/>
+												</div>
+											</div>
+										)}
+									</form.Field>
+									<form.Field name="wholesale_min_qty">
+										{(field) => (
+											<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+												<Label
+													htmlFor="wholesale_min_qty"
+													className="sm:text-right"
+												>
+													Min. Qty Grosir
+												</Label>
+												<div className="col-span-3">
+													<Input
+														id="wholesale_min_qty"
+														type="number"
+														min={1}
+														placeholder="Contoh: 12"
+														value={field.state.value ?? ""}
+														onChange={(e) =>
+															field.handleChange(
+																e.target.value === ""
+																	? null
+																	: Number(e.target.value),
+															)
+														}
+													/>
+													<p className="mt-1 text-muted-foreground text-xs">
+														Harga grosir aktif saat qty ≥ angka ini
+													</p>
+												</div>
+											</div>
+										)}
+									</form.Field>
+								</div>
+							</TabsContent>
+						</Tabs>
+
+						<DialogFooter className="mt-4">
 							<form.Subscribe selector={(state) => state.isSubmitting}>
 								{(isSubmitting) => (
 									<Button

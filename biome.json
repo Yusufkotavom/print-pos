@@ -10,9 +10,11 @@
 		"includes": [
 			"**",
 			"!**/.next",
+			"!**/.source",
 			"!**/dist",
 			"!**/.turbo",
 			"!**/.reference",
+			"!**/__tests__",
 			"!**/data"
 		]
 	},

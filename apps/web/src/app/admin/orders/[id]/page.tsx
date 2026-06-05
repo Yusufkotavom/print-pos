@@ -27,14 +27,14 @@ import {
 } from "@finopenpos/ui/components/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon, DownloadIcon, PrinterIcon } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { use, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { InvoicePDF } from "@/components/invoice-pdf";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
-import dynamic from "next/dynamic";
-import { InvoicePDF } from "@/components/invoice-pdf";
 
 const PDFDownloadLink = dynamic(
 	() => import("@react-pdf/renderer").then((mod) => mod.PDFDownloadLink),
@@ -159,7 +159,7 @@ export default function OrderDetailPage({
 
 	return (
 		<div className="max-w-3xl space-y-6 print:max-w-none">
-			<div className="flex items-center justify-between gap-4 print:hidden">
+			<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
 				<div className="flex items-center gap-4">
 					<Link href="/admin/orders">
 						<Button variant="ghost" size="icon">
@@ -170,8 +170,9 @@ export default function OrderDetailPage({
 						{t("orderDetails")} {orderNumber}
 					</h1>
 				</div>
-				<div className="flex gap-2">
+				<div className="flex flex-col gap-2 sm:flex-row">
 					<Button
+						className="w-full sm:w-auto"
 						variant="outline"
 						onClick={() => window.open(`/api/orders/${order.id}/pdf`, "_blank")}
 					>
@@ -190,7 +191,11 @@ export default function OrderDetailPage({
 							fileName={`invoice-${order.id}.pdf`}
 						>
 							{({ loading }) => (
-								<Button variant="default" disabled={loading}>
+								<Button
+									className="w-full sm:w-auto"
+									variant="default"
+									disabled={loading}
+								>
 									<DownloadIcon className="mr-2 h-4 w-4" />
 									{loading ? tc("loading") : "Download PDF"}
 								</Button>
@@ -314,9 +319,16 @@ export default function OrderDetailPage({
 									{order.orderItems.map((item) => (
 										<TableRow key={item.id}>
 											<TableCell className="font-medium">
-												{item.item_name ||
-													item.product?.name ||
-													`#${item.product_id}`}
+												<div>
+													{item.item_name ||
+														item.product?.name ||
+														`#${item.product_id}`}
+												</div>
+												{item.note && (
+													<div className="mt-0.5 text-muted-foreground text-xs">
+														{item.note}
+													</div>
+												)}
 											</TableCell>
 											<TableCell className="hidden sm:table-cell">
 												<Badge variant="outline">

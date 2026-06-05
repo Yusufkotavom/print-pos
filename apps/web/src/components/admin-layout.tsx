@@ -14,6 +14,7 @@ import {
 	ChevronDownIcon,
 	CreditCardIcon,
 	DollarSignIcon,
+	FileBarChartIcon,
 	FolderTreeIcon,
 	LayoutDashboardIcon,
 	type LucideIcon,
@@ -44,6 +45,9 @@ interface NavItem {
 		| "categories"
 		| "customers"
 		| "orders"
+		| "financialReports"
+		| "incomeStatement"
+		| "balanceSheet"
 		| "paymentMethods"
 		| "pos"
 		| "companySettings";
@@ -74,6 +78,28 @@ const navItems: NavItem[] = [
 	{ href: "/admin/customers", labelKey: "customers", icon: UsersIcon },
 	{ href: "/admin/orders", labelKey: "orders", icon: ShoppingBagIcon },
 	{
+		href: "/admin/reports/financial",
+		labelKey: "financialReports",
+		icon: FileBarChartIcon,
+		children: [
+			{
+				href: "/admin/reports/financial",
+				labelKey: "financialReports",
+				icon: FileBarChartIcon,
+			},
+			{
+				href: "/admin/reports/income-statement",
+				labelKey: "incomeStatement",
+				icon: FileBarChartIcon,
+			},
+			{
+				href: "/admin/reports/balance-sheet",
+				labelKey: "balanceSheet",
+				icon: FileBarChartIcon,
+			},
+		],
+	},
+	{
 		href: "/admin/payment-methods",
 		labelKey: "paymentMethods",
 		icon: CreditCardIcon,
@@ -93,7 +119,7 @@ function flattenNavItems(items: NavItem[]): NavItem[] {
 	]);
 }
 
-function isNavItemActive(pathname: string, item: NavItem) {
+function isNavItemActive(pathname: string, item: NavItem): boolean {
 	return (
 		pathname === item.href ||
 		item.children?.some((child) => isNavItemActive(pathname, child)) === true
@@ -105,6 +131,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 	const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
 		"/admin/cashier": true,
+		"/admin/reports/financial": true,
 	});
 	const t = useTranslations("nav");
 
@@ -270,7 +297,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 			{/* Mobile drawer overlay */}
 			{mobileMenuOpen && (
 				<div className="fixed inset-0 z-50 sm:hidden">
-					<div
+					<button
+						type="button"
 						className="fixed inset-0 bg-black/50"
 						onClick={() => setMobileMenuOpen(false)}
 					/>

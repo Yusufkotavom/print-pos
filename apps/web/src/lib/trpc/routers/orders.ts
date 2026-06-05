@@ -47,6 +47,8 @@ const orderDetailSchema = z.object({
 			item_type: z.string(),
 			quantity: z.number(),
 			price: z.number(),
+			cost: z.number(),
+			note: z.string().nullable(),
 			product: z
 				.object({
 					name: z.string(),
@@ -127,6 +129,7 @@ export const ordersRouter = router({
 						id: z.number(),
 						quantity: z.number().int().positive(),
 						price: z.number().int(),
+						note: z.string().optional(),
 					}),
 				),
 				total: z.number().int(),
@@ -168,6 +171,7 @@ export const ordersRouter = router({
 						.select({
 							id: products.id,
 							name: products.name,
+							cost: products.cost,
 							product_type: products.product_type,
 							user_uid: products.user_uid,
 							in_stock: products.in_stock,
@@ -200,6 +204,8 @@ export const ordersRouter = router({
 						item_type: product.product_type,
 						quantity: item.quantity,
 						price: item.price,
+						cost: product.cost,
+						note: item.note,
 					});
 				}
 

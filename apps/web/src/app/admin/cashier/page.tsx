@@ -101,7 +101,8 @@ export default function Cashier() {
 			hideOnMobile: true,
 			accessorFn: (row) =>
 				row.created_at ? new Date(row.created_at).getTime() : 0,
-			render: (row) => formatDate(row.created_at!, locale),
+			render: (row) =>
+				row.created_at ? formatDate(row.created_at, locale) : "-",
 		},
 		{
 			key: "amount",
@@ -241,7 +242,7 @@ export default function Cashier() {
 		key: "actions",
 		header: "",
 		render: (row) => (
-			<div onClick={(e) => e.stopPropagation()}>
+			<TableActions>
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
 						<Button aria-haspopup="true" size="icon" variant="ghost">
@@ -263,7 +264,7 @@ export default function Cashier() {
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
-			</div>
+			</TableActions>
 		),
 	};
 

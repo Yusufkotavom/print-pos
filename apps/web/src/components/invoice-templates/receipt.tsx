@@ -1,5 +1,5 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
-import { InvoicePDFProps } from "./types";
+import type { InvoicePDFProps } from "./types";
 
 const styles = StyleSheet.create({
 	page: {
@@ -84,11 +84,15 @@ const styles = StyleSheet.create({
 	},
 });
 
-export function TemplateReceipt({ order, companySettings, labels }: InvoicePDFProps) {
+export function TemplateReceipt({
+	order,
+	companySettings,
+	labels,
+}: InvoicePDFProps) {
 	const remainingAmount = Math.max(0, order.total_amount - order.paid_amount);
 
 	const formattedDate = order.created_at
-		? new Date(order.created_at).toLocaleDateString("id-ID", {
+		? new Date(order.created_at).toLocaleString("id-ID", {
 				dateStyle: "medium",
 				timeStyle: "short",
 			})
@@ -132,6 +136,11 @@ export function TemplateReceipt({ order, companySettings, labels }: InvoicePDFPr
 								<Text style={styles.itemTitle}>
 									{item.item_name || item.product?.name || `#${item.id}`}
 								</Text>
+								{item.note ? (
+									<Text style={{ fontSize: 7, color: "#888" }}>
+										{item.note}
+									</Text>
+								) : null}
 							</View>
 							<View style={styles.colQty}>
 								<Text>x{item.quantity}</Text>

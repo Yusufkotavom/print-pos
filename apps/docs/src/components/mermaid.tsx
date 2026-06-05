@@ -51,7 +51,11 @@ function svgToPng(svgEl: SVGSVGElement, scale = 2): Promise<Blob> {
 			const canvas = document.createElement("canvas");
 			canvas.width = w;
 			canvas.height = h;
-			const ctx = canvas.getContext("2d")!;
+			const ctx = canvas.getContext("2d");
+			if (!ctx) {
+				reject(new Error("Canvas context unavailable"));
+				return;
+			}
 			ctx.fillStyle =
 				getComputedStyle(document.documentElement).getPropertyValue(
 					"background-color",
@@ -96,11 +100,13 @@ function useZoomPan(
 
 		const vw = viewport.clientWidth - PADDING * 2;
 		const vh = viewport.clientHeight - PADDING * 2;
-		const sw = content.getAttribute("width")
-			? Number.parseFloat(content.getAttribute("width")!)
+		const widthAttr = content.getAttribute("width");
+		const heightAttr = content.getAttribute("height");
+		const sw = widthAttr
+			? Number.parseFloat(widthAttr)
 			: content.getBoundingClientRect().width;
-		const sh = content.getAttribute("height")
-			? Number.parseFloat(content.getAttribute("height")!)
+		const sh = heightAttr
+			? Number.parseFloat(heightAttr)
 			: content.getBoundingClientRect().height;
 
 		if (!sw || !sh) return 1;
@@ -202,7 +208,7 @@ const iconProps = {
 
 function DownloadIcon() {
 	return (
-		<svg {...iconProps}>
+		<svg {...iconProps} aria-label="Download">
 			<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
 			<polyline points="7 10 12 15 17 10" />
 			<line x1="12" y1="15" x2="12" y2="3" />
@@ -212,7 +218,7 @@ function DownloadIcon() {
 
 function MaximizeIcon() {
 	return (
-		<svg {...iconProps}>
+		<svg {...iconProps} aria-label="Maximize">
 			<polyline points="15 3 21 3 21 9" />
 			<polyline points="9 21 3 21 3 15" />
 			<line x1="21" y1="3" x2="14" y2="10" />
@@ -223,7 +229,7 @@ function MaximizeIcon() {
 
 function MinimizeIcon() {
 	return (
-		<svg {...iconProps}>
+		<svg {...iconProps} aria-label="Minimize">
 			<polyline points="4 14 10 14 10 20" />
 			<polyline points="20 10 14 10 14 4" />
 			<line x1="14" y1="10" x2="21" y2="3" />
@@ -234,7 +240,7 @@ function MinimizeIcon() {
 
 function PlusIcon() {
 	return (
-		<svg {...iconProps}>
+		<svg {...iconProps} aria-label="Zoom in">
 			<line x1="12" y1="5" x2="12" y2="19" />
 			<line x1="5" y1="12" x2="19" y2="12" />
 		</svg>
@@ -243,7 +249,7 @@ function PlusIcon() {
 
 function MinusIcon() {
 	return (
-		<svg {...iconProps}>
+		<svg {...iconProps} aria-label="Zoom out">
 			<line x1="5" y1="12" x2="19" y2="12" />
 		</svg>
 	);
@@ -251,7 +257,7 @@ function MinusIcon() {
 
 function FitIcon() {
 	return (
-		<svg {...iconProps}>
+		<svg {...iconProps} aria-label="Fit to screen">
 			<path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" />
 		</svg>
 	);
@@ -277,8 +283,7 @@ export function Mermaid({ chart }: { chart: string }) {
 		if (fullscreen) {
 			requestAnimationFrame(() => zp.fit());
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [fullscreen, svg]);
+	}, [fullscreen, zp]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -400,12 +405,7 @@ export function Mermaid({ chart }: { chart: string }) {
 
 	if (fullscreen) {
 		return (
-			<div
-				className="fixed inset-0 z-50 flex items-center justify-center bg-fd-background/80 p-4 backdrop-blur-sm"
-				onClick={(e) => {
-					if (e.target === e.currentTarget) setFullscreen(false);
-				}}
-			>
+			<div className="fixed inset-0 z-50 flex items-center justify-center bg-fd-background/80 p-4 backdrop-blur-sm">
 				<div className="group relative flex h-full w-full overflow-hidden rounded-xl border bg-fd-card shadow-lg">
 					{actionButtons}
 					<div

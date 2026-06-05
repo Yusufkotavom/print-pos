@@ -3,7 +3,6 @@ import type { Messages } from "@/messages/en";
 import { getContributors, getGitHubStats } from "../../lib/github";
 
 export default async function SocialProof({
-	locale,
 	messages,
 }: {
 	locale: string;

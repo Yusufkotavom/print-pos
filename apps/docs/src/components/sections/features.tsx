@@ -9,7 +9,7 @@ import {
 	Users,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { useTranslations } from "@/lib/translations";
 
 const features = [
@@ -53,7 +53,7 @@ function MiniCode() {
 			<span className="text-[#C9CBCF]">nfce</span>
 			<span className="text-[#94979E]">)</span>
 			<br />
-			<span className="text-[#64676F]">// status: 100 - Autorizada</span>
+			<span className="text-[#64676F]">{"// status: 100 - Autorizada"}</span>
 		</div>
 	);
 }
@@ -79,27 +79,15 @@ function MiniChart() {
 function BentoCard({
 	children,
 	className = "",
-	onMouseMove,
 }: {
 	children: ReactNode;
 	className?: string;
-	onMouseMove?: (e: React.MouseEvent) => void;
 }) {
 	const ref = useRef<HTMLDivElement>(null);
-
-	function handleMouseMove(e: React.MouseEvent) {
-		if (!ref.current) return;
-		const rect = ref.current.getBoundingClientRect();
-		const x = ((e.clientX - rect.left) / rect.width) * 100;
-		const y = ((e.clientY - rect.top) / rect.height) * 100;
-		ref.current.style.setProperty("--mouse-x", `${x}%`);
-		ref.current.style.setProperty("--mouse-y", `${y}%`);
-	}
 
 	return (
 		<div
 			ref={ref}
-			onMouseMove={handleMouseMove}
 			className={`bento-card group relative overflow-hidden rounded-2xl p-6 ${className}`}
 		>
 			<div

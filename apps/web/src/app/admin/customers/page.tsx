@@ -75,7 +75,7 @@ export default function CustomersPage() {
 			className: "font-medium",
 		},
 		{ key: "email", header: tc("email"), sortable: true },
-		{ key: "phone", header: tc("phone"), hideOnMobile: true },
+		{ key: "phone", header: tc("phone") },
 		{ key: "address", header: tc("address"), hideOnMobile: true },
 		{
 			key: "status",

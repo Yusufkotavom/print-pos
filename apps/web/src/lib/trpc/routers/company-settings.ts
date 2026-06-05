@@ -4,6 +4,33 @@ import { db } from "@/lib/db";
 import { companySettings } from "@/lib/db/schema";
 import { protectedProcedure, router } from "../init";
 
+const companySettingsSchema = z.object({
+	id: z.number(),
+	user_uid: z.string(),
+	company_name: z.string(),
+	trade_name: z.string().nullable(),
+	tax_id: z.string(),
+	business_license: z.string(),
+	business_type: z.number(),
+	currency: z.string(),
+	timezone: z.string(),
+	province_code: z.string(),
+	city_code: z.string(),
+	city_name: z.string(),
+	street: z.string(),
+	street_number: z.string(),
+	district: z.string(),
+	postal_code: z.string(),
+	address_detail: z.string().nullable(),
+	receipt_header: z.string().nullable(),
+	receipt_footer: z.string().nullable(),
+	invoice_terms: z.string().nullable(),
+	invoice_template: z.string().nullable(),
+	whatsapp_template: z.string().nullable(),
+	created_at: z.date(),
+	updated_at: z.date().nullable(),
+});
+
 export const companySettingsRouter = router({
 	get: protectedProcedure
 		.meta({
@@ -15,7 +42,7 @@ export const companySettingsRouter = router({
 			},
 		})
 		.input(z.void())
-		.output(z.any())
+		.output(companySettingsSchema.nullable())
 		.query(async ({ ctx }) => {
 			const result = await db
 				.select()
@@ -56,6 +83,7 @@ export const companySettingsRouter = router({
 				receipt_footer: z.string().optional(),
 				invoice_terms: z.string().optional(),
 				invoice_template: z.string().optional(),
+				whatsapp_template: z.string().optional(),
 			}),
 		)
 		.output(z.object({ success: z.boolean(), id: z.number() }))

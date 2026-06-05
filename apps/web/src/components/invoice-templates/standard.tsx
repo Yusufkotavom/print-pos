@@ -195,14 +195,19 @@ const styles = StyleSheet.create({
 	},
 });
 
-import { InvoicePDFProps } from "./types";
+import type { InvoicePDFProps } from "./types";
 
-export function TemplateStandard({ order, companySettings, labels }: InvoicePDFProps) {
+export function TemplateStandard({
+	order,
+	companySettings,
+	labels,
+}: InvoicePDFProps) {
 	const remainingAmount = Math.max(0, order.total_amount - order.paid_amount);
 
 	const formattedDate = order.created_at
-		? new Date(order.created_at).toLocaleDateString("id-ID", {
+		? new Date(order.created_at).toLocaleString("id-ID", {
 				dateStyle: "medium",
+				timeStyle: "short",
 			})
 		: "—";
 
@@ -220,10 +225,14 @@ export function TemplateStandard({ order, companySettings, labels }: InvoicePDFP
 							{companySettings?.company_name || "FinOpenPOS"}
 						</Text>
 						{companySettings?.trade_name && (
-							<Text style={styles.companySub}>{companySettings.trade_name}</Text>
+							<Text style={styles.companySub}>
+								{companySettings.trade_name}
+							</Text>
 						)}
 						{companySettings?.tax_id && (
-							<Text style={styles.companySub}>NPWP: {companySettings.tax_id}</Text>
+							<Text style={styles.companySub}>
+								NPWP: {companySettings.tax_id}
+							</Text>
 						)}
 					</View>
 					<View style={styles.invoiceMeta}>
@@ -251,7 +260,9 @@ export function TemplateStandard({ order, companySettings, labels }: InvoicePDFP
 									<Text style={styles.detailText}>{order.customer.email}</Text>
 								)}
 								{order.customer.address && (
-									<Text style={styles.detailText}>{order.customer.address}</Text>
+									<Text style={styles.detailText}>
+										{order.customer.address}
+									</Text>
 								)}
 							</>
 						) : (
@@ -307,6 +318,11 @@ export function TemplateStandard({ order, companySettings, labels }: InvoicePDFP
 								<Text>
 									{item.item_name || item.product?.name || `#${item.id}`}
 								</Text>
+								{item.note ? (
+									<Text style={{ fontSize: 7, color: "#888" }}>
+										{item.note}
+									</Text>
+								) : null}
 							</View>
 							<View style={styles.colQty}>
 								<Text>{item.quantity}</Text>
@@ -357,7 +373,9 @@ export function TemplateStandard({ order, companySettings, labels }: InvoicePDFP
 				{companySettings?.invoice_terms && (
 					<View style={styles.termsContainer}>
 						<Text style={styles.termsTitle}>Catatan / Syarat Ketentuan</Text>
-						<Text style={styles.termsText}>{companySettings.invoice_terms}</Text>
+						<Text style={styles.termsText}>
+							{companySettings.invoice_terms}
+						</Text>
 					</View>
 				)}
 

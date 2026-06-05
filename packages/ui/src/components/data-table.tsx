@@ -63,7 +63,17 @@ interface DataTableProps<T> {
 
 // ── Column mapping ─────────────────────────────────────────────────────────
 
+interface DataTableColumnMeta {
+	className?: string;
+	hideOnMobile?: boolean;
+}
+
+function getColumnMeta(meta: unknown): DataTableColumnMeta {
+	return typeof meta === "object" && meta !== null ? meta : {};
+}
+
 function mapToColumnDef<T>(col: Column<T>): ColumnDef<T> {
+	const sortFn = col.sortFn;
 	return {
 		id: col.key,
 		accessorFn:
@@ -99,9 +109,7 @@ function mapToColumnDef<T>(col: Column<T>): ColumnDef<T> {
 			col.render
 				? col.render(row.original)
 				: String(row.getValue(col.key) ?? ""),
-		sortingFn: col.sortFn
-			? (a, b) => col.sortFn!(a.original, b.original)
-			: "auto",
+		sortingFn: sortFn ? (a, b) => sortFn(a.original, b.original) : "auto",
 		enableSorting: col.sortable ?? false,
 		meta: { className: col.className, hideOnMobile: col.hideOnMobile },
 	};
@@ -207,7 +215,9 @@ export function DataTable<T>({
 								{headerGroup.headers.map((header) => (
 									<TableHead
 										key={header.id}
-										className={(header.column.columnDef.meta as any)?.className}
+										className={
+											getColumnMeta(header.column.columnDef.meta).className
+										}
 									>
 										{header.isPlaceholder
 											? null
@@ -239,12 +249,22 @@ export function DataTable<T>({
 								<TableRow
 									key={row.id}
 									className={onRowClick ? "cursor-pointer" : undefined}
-									onClick={() => onRowClick?.(row.original)}
+									onClick={(event) => {
+										if (
+											event.target instanceof Element &&
+											event.target.closest("[data-table-actions]")
+										) {
+											return;
+										}
+										onRowClick?.(row.original);
+									}}
 								>
 									{row.getVisibleCells().map((cell) => (
 										<TableCell
 											key={cell.id}
-											className={(cell.column.columnDef.meta as any)?.className}
+											className={
+												getColumnMeta(cell.column.columnDef.meta).className
+											}
 										>
 											{flexRender(
 												cell.column.columnDef.cell,
@@ -267,10 +287,7 @@ export function DataTable<T>({
 
 export function TableActions({ children }: { children: ReactNode }) {
 	return (
-		<div
-			className="flex items-center gap-1"
-			onClick={(e) => e.stopPropagation()}
-		>
+		<div className="flex items-center gap-1" data-table-actions>
 			{children}
 		</div>
 	);

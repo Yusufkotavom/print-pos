@@ -28,7 +28,7 @@ export function formatCurrency(cents: number, locale?: string) {
 
 /** Format an ISO date string to a short label like "Jan 5". */
 export function formatShortDate(dateStr: string, locale?: string) {
-	const d = new Date(dateStr + "T00:00:00");
+	const d = new Date(`${dateStr}T00:00:00`);
 	return d.toLocaleDateString(resolveLocale(locale), {
 		month: "short",
 		day: "numeric",

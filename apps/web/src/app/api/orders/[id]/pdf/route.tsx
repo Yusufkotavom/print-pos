@@ -1,14 +1,14 @@
+import { renderToStream } from "@react-pdf/renderer";
+import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { InvoicePDF } from "@/components/invoice-pdf";
 import { getAuthUser } from "@/lib/auth-guard";
 import { db } from "@/lib/db";
-import { orders, companySettings } from "@/lib/db/schema";
-import { and, eq } from "drizzle-orm";
-import { renderToStream } from "@react-pdf/renderer";
-import { InvoicePDF } from "@/components/invoice-pdf";
+import { companySettings, orders } from "@/lib/db/schema";
 
 export async function GET(
-	request: Request,
-	{ params }: { params: Promise<{ id: string }> }
+	_request: Request,
+	{ params }: { params: Promise<{ id: string }> },
 ) {
 	const user = await getAuthUser();
 	if (!user) {
@@ -63,14 +63,10 @@ export async function GET(
 	};
 
 	const stream = await renderToStream(
-		<InvoicePDF
-			order={order}
-			companySettings={settings}
-			labels={pdfLabels}
-		/>
+		<InvoicePDF order={order} companySettings={settings} labels={pdfLabels} />,
 	);
 
-	return new NextResponse(stream as any, {
+	return new NextResponse(stream as unknown as ReadableStream, {
 		headers: {
 			"Content-Type": "application/pdf",
 			"Content-Disposition": `inline; filename="invoice-${orderId}.pdf"`,

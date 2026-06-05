@@ -3,6 +3,6 @@ import { serverUrls } from "@finopenpos/env/server";
 import { db } from "./db";
 
 export const auth = createAuth({
-	db: db as any,
+	db: db as never,
 	baseURL: serverUrls.betterAuthUrl,
 });
