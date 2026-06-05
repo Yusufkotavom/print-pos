@@ -1,4 +1,20 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: finopenpos
+      POSTGRES_PASSWORD: finopenpos
+      POSTGRES_DB: finopenpos
+    ports:
+      - "15432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finopenpos -d finopenpos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   app:
     build: .
     environment:
@@ -6,11 +22,13 @@ services:
       - BASE_URL=${BASE_URL:-http://localhost}
       - NEXT_PUBLIC_BASE_URL=${NEXT_PUBLIC_BASE_URL:-http://localhost}
       - PORT=3111
+      - DATABASE_URL=${DATABASE_URL:-postgresql://finopenpos:finopenpos@postgres:5432/finopenpos}
     ports:
       - "3111:3111"
-    volumes:
-      - pglite_data:/app/apps/web/data/pglite
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  pglite_data:
+  pg_data:

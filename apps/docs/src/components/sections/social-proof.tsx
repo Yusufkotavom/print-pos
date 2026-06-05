@@ -1,8 +1,14 @@
 import { getTranslations } from "@/lib/translations-server";
-import { getContributors, getGitHubStats } from "../../lib/github";
 import type { Messages } from "@/messages/en";
+import { getContributors, getGitHubStats } from "../../lib/github";
 
-export default async function SocialProof({ locale, messages }: { locale: string; messages: Messages }) {
+export default async function SocialProof({
+	locale,
+	messages,
+}: {
+	locale: string;
+	messages: Messages;
+}) {
 	const t = getTranslations(messages, "socialProof");
 	const [stats, contributors] = await Promise.all([
 		getGitHubStats(),
@@ -23,13 +29,13 @@ export default async function SocialProof({ locale, messages }: { locale: string
 
 			<div className="mx-auto max-w-5xl px-6">
 				{statItems.length > 0 && (
-					<div className="grid grid-cols-3 gap-8 border-b border-[#1a1a1a] pb-12">
+					<div className="grid grid-cols-3 gap-8 border-[#1a1a1a] border-b pb-12">
 						{statItems.map((stat) => (
 							<div key={stat.label}>
-								<span className="block font-display text-[clamp(2rem,5vw,4rem)] font-light tracking-tight text-white">
+								<span className="block font-display font-light text-[clamp(2rem,5vw,4rem)] text-white tracking-tight">
 									{stat.value}
 								</span>
-								<span className="mt-1 block text-[12px] font-medium uppercase tracking-[0.15em] text-[#64676F]">
+								<span className="mt-1 block font-medium text-[#64676F] text-[12px] uppercase tracking-[0.15em]">
 									{stat.label}
 								</span>
 							</div>
@@ -39,7 +45,7 @@ export default async function SocialProof({ locale, messages }: { locale: string
 
 				{contributors.length > 0 && (
 					<div className="mt-12 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-						<p className="max-w-sm text-[15px] leading-relaxed text-[#64676F]">
+						<p className="max-w-sm text-[#64676F] text-[15px] leading-relaxed">
 							{t("joinMessage", { count: String(stats.contributors) })}
 						</p>
 						<div className="flex -space-x-3">

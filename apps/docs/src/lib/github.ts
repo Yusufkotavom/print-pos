@@ -32,7 +32,9 @@ export async function getGitHubStats(): Promise<GitHubStats> {
 			},
 		);
 		const contribData = contribRes.ok ? await contribRes.json() : [];
-		const contributorCount = Array.isArray(contribData) ? contribData.length : 0;
+		const contributorCount = Array.isArray(contribData)
+			? contribData.length
+			: 0;
 
 		return {
 			stars: data.stargazers_count ?? 0,

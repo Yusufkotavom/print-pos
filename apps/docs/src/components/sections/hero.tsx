@@ -1,9 +1,15 @@
-import { Github, BookOpen } from "lucide-react";
-import { getTranslations } from "@/lib/translations-server";
+import { BookOpen, Github } from "lucide-react";
 import { links } from "@/lib/links";
+import { getTranslations } from "@/lib/translations-server";
 import type { Messages } from "@/messages/en";
 
-export default function Hero({ locale, messages }: { locale: string; messages: Messages }) {
+export default function Hero({
+	locale,
+	messages,
+}: {
+	locale: string;
+	messages: Messages;
+}) {
 	const t = getTranslations(messages, "hero");
 
 	return (
@@ -15,7 +21,7 @@ export default function Hero({ locale, messages }: { locale: string; messages: M
 
 			{/* ── Large gradient orb ── */}
 			<div
-				className="pointer-events-none absolute left-1/2 top-[30%] h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 animate-glow-pulse rounded-full opacity-60 blur-[120px]"
+				className="pointer-events-none absolute top-[30%] left-1/2 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 animate-glow-pulse rounded-full opacity-60 blur-[120px]"
 				style={{
 					background:
 						"radial-gradient(circle, rgba(52,213,154,0.2) 0%, rgba(44,109,76,0.1) 40%, transparent 70%)",
@@ -23,11 +29,11 @@ export default function Hero({ locale, messages }: { locale: string; messages: M
 			/>
 
 			{/* ── Horizon glow line ── */}
-			<div className="glow-line pointer-events-none absolute bottom-[40%] left-0 right-0 opacity-40" />
+			<div className="glow-line pointer-events-none absolute right-0 bottom-[40%] left-0 opacity-40" />
 
 			{/* ── Floating code snippet (left) ── */}
 			<div
-				className="pointer-events-none absolute left-[8%] top-[35%] hidden rotate-[-4deg] rounded-lg border border-[#1a1a1a] bg-[#0A0A0B]/90 px-4 py-3 font-mono text-[11px] leading-relaxed opacity-30 backdrop-blur xl:block"
+				className="pointer-events-none absolute top-[35%] left-[8%] hidden rotate-[-4deg] rounded-lg border border-[#1a1a1a] bg-[#0A0A0B]/90 px-4 py-3 font-mono text-[11px] leading-relaxed opacity-30 backdrop-blur xl:block"
 				style={{ animation: "float 6s ease-in-out infinite" }}
 			>
 				<span className="text-[#34D59A]">const</span>{" "}
@@ -41,7 +47,7 @@ export default function Hero({ locale, messages }: { locale: string; messages: M
 
 			{/* ── Floating code snippet (right) ── */}
 			<div
-				className="pointer-events-none absolute right-[8%] top-[45%] hidden rotate-[3deg] rounded-lg border border-[#1a1a1a] bg-[#0A0A0B]/90 px-4 py-3 font-mono text-[11px] leading-relaxed opacity-25 backdrop-blur xl:block"
+				className="pointer-events-none absolute top-[45%] right-[8%] hidden rotate-[3deg] rounded-lg border border-[#1a1a1a] bg-[#0A0A0B]/90 px-4 py-3 font-mono text-[11px] leading-relaxed opacity-25 backdrop-blur xl:block"
 				style={{ animation: "float 7s ease-in-out infinite 1s" }}
 			>
 				<span className="text-[#94979E]">{"// NFC-e emission"}</span>
@@ -58,25 +64,22 @@ export default function Hero({ locale, messages }: { locale: string; messages: M
 			{/* ── Content ── */}
 			<div className="relative z-10 flex min-h-[100svh] flex-col items-center justify-center px-6">
 				{/* Badge */}
-				<div
-					className="mb-10 animate-fade-in inline-flex items-center gap-2 rounded-full border border-[#2C6D4C]/40 bg-[#2C6D4C]/5 px-4 py-1.5 text-[13px] tracking-wide"
-				>
+				<div className="mb-10 inline-flex animate-fade-in items-center gap-2 rounded-full border border-[#2C6D4C]/40 bg-[#2C6D4C]/5 px-4 py-1.5 text-[13px] tracking-wide">
 					<span className="inline-block h-1.5 w-1.5 rounded-full bg-[#34D59A] shadow-[0_0_6px_rgba(52,213,154,0.8)]" />
 					<span className="text-[#34D59A]/90">Open Source POS System</span>
 				</div>
 
 				{/* Headline */}
 				<h1
-					className="animate-fade-in-up max-w-[900px] text-balance text-center font-display font-medium text-[clamp(2.5rem,8vw,5.5rem)] leading-[1.05] tracking-[-0.03em]"
+					className="max-w-[900px] animate-fade-in-up text-balance text-center font-display font-medium text-[clamp(2.5rem,8vw,5.5rem)] leading-[1.05] tracking-[-0.03em]"
 					style={{ animationDelay: "100ms" }}
 				>
-					{t("title")}{" "}
-					<span className="gradient-text">{t("titleAccent")}</span>
+					{t("title")} <span className="gradient-text">{t("titleAccent")}</span>
 				</h1>
 
 				{/* Subtitle */}
 				<p
-					className="mt-8 max-w-lg animate-fade-in-up text-center text-[17px] leading-[1.7] text-[#7a7d84]"
+					className="mt-8 max-w-lg animate-fade-in-up text-center text-[#7a7d84] text-[17px] leading-[1.7]"
 					style={{ animationDelay: "200ms" }}
 				>
 					{t("subtitle")}
@@ -91,14 +94,17 @@ export default function Hero({ locale, messages }: { locale: string; messages: M
 						href={links.github}
 						target="_blank"
 						rel="noopener noreferrer"
-						className="btn-shimmer group inline-flex items-center justify-center gap-2.5 rounded-lg bg-[#2C6D4C] px-7 py-3.5 text-[15px] font-medium text-white transition-all duration-300 hover:bg-[#34D59A] hover:shadow-[0_0_40px_rgba(52,213,154,0.3)]"
+						className="btn-shimmer group inline-flex items-center justify-center gap-2.5 rounded-lg bg-[#2C6D4C] px-7 py-3.5 font-medium text-[15px] text-white transition-all duration-300 hover:bg-[#34D59A] hover:shadow-[0_0_40px_rgba(52,213,154,0.3)]"
 					>
-						<Github size={17} className="transition-transform duration-300 group-hover:scale-110" />
+						<Github
+							size={17}
+							className="transition-transform duration-300 group-hover:scale-110"
+						/>
 						{t("cta")}
 					</a>
 					<a
 						href={`/${locale}/docs`}
-						className="inline-flex items-center justify-center gap-2.5 rounded-lg border border-[#222] bg-transparent px-7 py-3.5 text-[15px] font-medium text-[#94979E] transition-all duration-300 hover:border-[#2C6D4C]/50 hover:text-white"
+						className="inline-flex items-center justify-center gap-2.5 rounded-lg border border-[#222] bg-transparent px-7 py-3.5 font-medium text-[#94979E] text-[15px] transition-all duration-300 hover:border-[#2C6D4C]/50 hover:text-white"
 					>
 						<BookOpen size={17} />
 						{t("ctaSecondary")}

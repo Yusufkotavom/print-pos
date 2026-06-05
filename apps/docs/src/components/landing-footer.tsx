@@ -1,14 +1,20 @@
-import { getTranslations } from "@/lib/translations-server";
 import { links } from "@/lib/links";
+import { getTranslations } from "@/lib/translations-server";
 import type { Messages } from "@/messages/en";
 
-export default function Footer({ locale, messages }: { locale: string; messages: Messages }) {
+export default function Footer({
+	locale,
+	messages,
+}: {
+	locale: string;
+	messages: Messages;
+}) {
 	const t = getTranslations(messages, "footer");
 
 	return (
-		<footer className="border-t border-[#1a1a1a] py-8">
+		<footer className="border-[#1a1a1a] border-t py-8">
 			<div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 sm:flex-row">
-				<p className="text-[13px] text-[#4E5159]">
+				<p className="text-[#4E5159] text-[13px]">
 					{t("builtWith")}{" "}
 					<span className="text-[#64676F]">Next.js, PGLite, Drizzle</span>{" "}
 					{t("by")}
@@ -18,19 +24,19 @@ export default function Footer({ locale, messages }: { locale: string; messages:
 						href={links.github}
 						target="_blank"
 						rel="noopener noreferrer"
-						className="text-[13px] text-[#4E5159] transition-colors hover:text-[#94979E]"
+						className="text-[#4E5159] text-[13px] transition-colors hover:text-[#94979E]"
 					>
 						{t("github")}
 					</a>
 					<a
 						href={`/${locale}/docs`}
-						className="text-[13px] text-[#4E5159] transition-colors hover:text-[#94979E]"
+						className="text-[#4E5159] text-[13px] transition-colors hover:text-[#94979E]"
 					>
 						{t("docs")}
 					</a>
 					<a
 						href={links.apiDocs}
-						className="text-[13px] text-[#4E5159] transition-colors hover:text-[#94979E]"
+						className="text-[#4E5159] text-[13px] transition-colors hover:text-[#94979E]"
 					>
 						API
 					</a>
@@ -38,7 +44,7 @@ export default function Footer({ locale, messages }: { locale: string; messages:
 						href={links.license}
 						target="_blank"
 						rel="noopener noreferrer"
-						className="text-[13px] text-[#4E5159] transition-colors hover:text-[#94979E]"
+						className="text-[#4E5159] text-[13px] transition-colors hover:text-[#94979E]"
 					>
 						{t("license")}
 					</a>

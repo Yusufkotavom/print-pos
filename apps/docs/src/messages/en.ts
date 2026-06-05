@@ -1,7 +1,7 @@
 const messages = {
 	common: {
 		locale: "English",
-		switchLocale: "Português",
+		switchLocale: "Indonesia",
 	},
 	header: {
 		features: "Features",
@@ -86,7 +86,7 @@ const messages = {
 		i18n: {
 			name: "Internationalization",
 			description:
-				"Built-in support for multiple languages. Currently English and Portuguese (Brazil).",
+				"Built-in support for multiple languages. Currently English and Indonesian.",
 		},
 	},
 	socialProof: {

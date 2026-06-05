@@ -2,15 +2,15 @@
 
 import {
 	BarChart3,
+	Database,
 	FileText,
 	Languages,
 	ShoppingCart,
 	Users,
-	Database,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { useEffect, useRef } from "react";
 import { useTranslations } from "@/lib/translations";
-import { useRef, useEffect } from "react";
 
 const features = [
 	{
@@ -65,7 +65,11 @@ function MiniChart() {
 				<div
 					key={i}
 					className="w-full rounded-sm bg-[#2C6D4C]/30 transition-all duration-300 hover:bg-[#34D59A]/50"
-					style={{ height: `${h}%`, maxHeight: "48px", minHeight: `${h * 0.48}px` }}
+					style={{
+						height: `${h}%`,
+						maxHeight: "48px",
+						minHeight: `${h * 0.48}px`,
+					}}
 				/>
 			))}
 		</div>
@@ -120,10 +124,10 @@ export default function Features() {
 			<div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#2C6D4C]/30 to-transparent" />
 
 			<div className="mx-auto max-w-6xl px-6">
-				<p className="mb-4 text-[13px] font-medium uppercase tracking-[0.2em] text-[#2C6D4C]">
+				<p className="mb-4 font-medium text-[#2C6D4C] text-[13px] uppercase tracking-[0.2em]">
 					Features
 				</p>
-				<h2 className="max-w-2xl text-[28px] font-normal leading-[1.15] tracking-tighter text-[#94979E] md:text-[36px] lg:text-[48px]">
+				<h2 className="max-w-2xl font-normal text-[#94979E] text-[28px] leading-[1.15] tracking-tighter md:text-[36px] lg:text-[48px]">
 					{t.rich("title", {
 						accent: (chunks: ReactNode) => (
 							<strong className="font-normal text-white">{chunks}</strong>
@@ -143,7 +147,7 @@ export default function Features() {
 								<h3 className="mt-3 font-medium text-[15px] text-white/90 tracking-tight">
 									{t(`${key}.name`)}
 								</h3>
-								<p className="mt-1.5 text-[13px] leading-relaxed text-[#64676F]">
+								<p className="mt-1.5 text-[#64676F] text-[13px] leading-relaxed">
 									{t(`${key}.description`)}
 								</p>
 							</div>

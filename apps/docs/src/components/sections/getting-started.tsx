@@ -1,9 +1,9 @@
 "use client";
 
 import { Check, Copy } from "lucide-react";
-import { useTranslations } from "@/lib/translations";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { useTranslations } from "@/lib/translations";
 
 export default function GettingStarted() {
 	const t = useTranslations("getStarted");
@@ -25,10 +25,10 @@ export default function GettingStarted() {
 	return (
 		<section className="relative py-28 lg:py-36">
 			<div className="mx-auto max-w-3xl px-6">
-				<p className="mb-4 text-[13px] font-medium uppercase tracking-[0.2em] text-[#2C6D4C]">
+				<p className="mb-4 font-medium text-[#2C6D4C] text-[13px] uppercase tracking-[0.2em]">
 					Quick Start
 				</p>
-				<h2 className="max-w-lg text-[24px] font-normal leading-[1.15] tracking-tighter text-[#94979E] md:text-[28px] lg:text-[40px]">
+				<h2 className="max-w-lg font-normal text-[#94979E] text-[24px] leading-[1.15] tracking-tighter md:text-[28px] lg:text-[40px]">
 					{t.rich("title", {
 						accent: (chunks: ReactNode) => (
 							<strong className="font-normal text-white">{chunks}</strong>
@@ -39,14 +39,16 @@ export default function GettingStarted() {
 				{/* Terminal */}
 				<div className="group mt-12 overflow-hidden rounded-xl border border-[#1a1a1a] bg-[#0A0A0B] transition-colors duration-300 hover:border-[#2C6D4C]/30">
 					{/* Terminal header */}
-					<div className="flex items-center justify-between border-b border-[#1a1a1a] px-5 py-3.5">
+					<div className="flex items-center justify-between border-[#1a1a1a] border-b px-5 py-3.5">
 						<div className="flex items-center gap-3">
 							<div className="flex gap-1.5">
 								<span className="h-2.5 w-2.5 rounded-full bg-[#FF5F57]/80" />
 								<span className="h-2.5 w-2.5 rounded-full bg-[#FEBC2E]/80" />
 								<span className="h-2.5 w-2.5 rounded-full bg-[#28C840]/80" />
 							</div>
-							<span className="font-mono text-[11px] text-[#64676F]">terminal</span>
+							<span className="font-mono text-[#64676F] text-[11px]">
+								terminal
+							</span>
 						</div>
 						<button
 							type="button"

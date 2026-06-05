@@ -1,14 +1,8 @@
-import { PGlite } from "@electric-sql/pglite";
-import { drizzle } from "drizzle-orm/pglite";
+import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
 
-const globalForPGlite = globalThis as unknown as {
-  pglite: PGlite | undefined;
-};
+const databaseUrl =
+	process.env.DATABASE_URL ??
+	"postgresql://finopenpos:finopenpos@localhost:15432/finopenpos";
 
-export const pglite =
-  globalForPGlite.pglite ?? new PGlite("./data/pglite");
-
-globalForPGlite.pglite = pglite;
-
-export const db = drizzle({ client: pglite, schema });
+export const db = drizzle(databaseUrl, { schema });

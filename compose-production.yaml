@@ -1,4 +1,18 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: finopenpos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finopenpos}
+      POSTGRES_DB: finopenpos
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finopenpos -d finopenpos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   app:
     build:
       context: .
@@ -7,11 +21,13 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-finopenpos}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://finopenpos:finopenpos@postgres:5432/finopenpos}
       - PORT=3111
     ports:
       - "3111:3111"
-    volumes:
-      - pg_data:/var/lib/postgresql/data
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

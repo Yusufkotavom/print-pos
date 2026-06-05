@@ -24,7 +24,8 @@ const messages = {
 		count: "pequenas empresas no Brasil",
 	},
 	techStack: {
-		title: "Construído com as <accent>melhores ferramentas</accent> para o trabalho",
+		title:
+			"Construído com as <accent>melhores ferramentas</accent> para o trabalho",
 		pglite: {
 			name: "PGLite",
 			description:

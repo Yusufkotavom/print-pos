@@ -1,25 +1,25 @@
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { router } from "./init";
-import { productsRouter } from "./routers/products";
-import { customersRouter } from "./routers/customers";
-import { ordersRouter } from "./routers/orders";
-import { transactionsRouter } from "./routers/transactions";
-import { paymentMethodsRouter } from "./routers/payment-methods";
-import { dashboardRouter } from "./routers/dashboard";
-import { fiscalSettingsRouter } from "./routers/fiscal-settings";
-import { fiscalRouter } from "./routers/fiscal";
 import { citiesRouter } from "./routers/cities";
+import { companySettingsRouter } from "./routers/company-settings";
+import { customersRouter } from "./routers/customers";
+import { dashboardRouter } from "./routers/dashboard";
+import { ordersRouter } from "./routers/orders";
+import { paymentMethodsRouter } from "./routers/payment-methods";
+import { productCategoriesRouter } from "./routers/product-categories";
+import { productsRouter } from "./routers/products";
+import { transactionsRouter } from "./routers/transactions";
 
 export const appRouter = router({
-  products: productsRouter,
-  customers: customersRouter,
-  orders: ordersRouter,
-  transactions: transactionsRouter,
-  paymentMethods: paymentMethodsRouter,
-  dashboard: dashboardRouter,
-  fiscalSettings: fiscalSettingsRouter,
-  fiscal: fiscalRouter,
-  cities: citiesRouter,
+	products: productsRouter,
+	productCategories: productCategoriesRouter,
+	customers: customersRouter,
+	orders: ordersRouter,
+	transactions: transactionsRouter,
+	paymentMethods: paymentMethodsRouter,
+	dashboard: dashboardRouter,
+	companySettings: companySettingsRouter,
+	cities: citiesRouter,
 });
 
 export type AppRouter = typeof appRouter;
