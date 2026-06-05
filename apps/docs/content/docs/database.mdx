@@ -46,6 +46,7 @@ erDiagram
 
     orders {
         serial id PK
+        varchar order_number
         integer customer_id FK
         integer total_amount
         varchar user_uid
@@ -68,6 +69,7 @@ erDiagram
 
     transactions {
         serial id PK
+        varchar transaction_number
         text description
         integer order_id FK
         integer payment_method_id FK
@@ -88,15 +90,13 @@ erDiagram
 
 {/* ER_END */}
 
-See [Fiscal Database Schema](/docs/fiscal/database-schema) for the fiscal-specific tables (`fiscalSettings`, `invoices`, `invoiceItems`, `invoiceEvents`, `cities`).
+The current schema covers products, product categories, customers, orders, order item snapshots, transaction categories, transactions, payment methods, cities and company settings.
 
 ## Conventions
 
 | Convention | Example |
 |-----------|---------|
 | Monetary values | Integer cents — `4999` = R$49.99 |
-| ICMS/FCP rates | Hundredths — `1800` = 18.00% |
-| PIS/COFINS rates | Ten-thousandths — `16500` = 1.6500% |
 | Multi-tenancy | All tables with `user_uid` column |
 | Timestamps | `created_at` with `defaultNow()` |
 
@@ -119,9 +119,11 @@ The PGLite singleton lives at `src/lib/db/index.ts` using a `globalThis` trick t
 ## Seeding
 
 On the first `bun run dev`, the database is seeded with:
-- ~5570 IBGE cities (fetched from the IBGE API)
+- ~5570 Indonesian cities
 - Default payment methods
-- Demo data: 20 customers, 32 products, 40 orders, 25 transactions
+- Demo customers, products, orders and transactions
+
+Product categories, transaction categories and company settings are configured from the admin UI after bootstrap.
 
 ## Migrating to PostgreSQL
 

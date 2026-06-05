@@ -297,6 +297,10 @@ const messages: Messages = {
 		addressComplement: "Detail Alamat",
 		saved: "Pengaturan perusahaan disimpan",
 		saveError: "Gagal menyimpan pengaturan perusahaan",
+		documentSettings: "Pengaturan Dokumen (Struk & Invoice)",
+		receiptHeader: "Header Struk POS (Opsional)",
+		receiptFooter: "Footer Struk POS",
+		invoiceTerms: "Catatan / Syarat Ketentuan Invoice",
 	},
 
 	error: {

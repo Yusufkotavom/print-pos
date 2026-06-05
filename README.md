@@ -1,8 +1,7 @@
 # FinOpenPOS
 
-Open-source Point of Sale (POS) and inventory management system with **Brazilian fiscal module** (NF-e/NFC-e). Built with Next.js 16, React 19 and embedded PostgreSQL via PGLite. Turborepo monorepo with the fiscal module as a standalone package. Zero external dependencies to run — `bun install && bun run dev` and you're set.
+Open-source Point of Sale (POS) and inventory management system for small retail and service businesses. Built with Next.js 16, React 19, Drizzle ORM and embedded PostgreSQL via PGLite. Zero external dependencies to run — `bun install && bun run dev` and you're set.
 
-> **[Leia em Portugues](README.ptBR.md)**
 
 ## Table of Contents
 
@@ -12,11 +11,6 @@ Open-source Point of Sale (POS) and inventory management system with **Brazilian
 - [Quick Start](#quick-start)
 - [Scripts](#scripts)
 - [Project Structure](#project-structure)
-- [Fiscal Module (NF-e / NFC-e)](#fiscal-module-nf-e--nfc-e)
-  - [Invoice Lifecycle](#invoice-lifecycle)
-  - [Tax Engine](#tax-engine)
-  - [SEFAZ Communication](#sefaz-communication)
-  - [Detailed Documentation](#detailed-documentation)
 - [API](#api)
   - [Interactive Docs](#interactive-docs)
   - [tRPC Procedures](#trpc-procedures)
@@ -41,16 +35,12 @@ Open-source Point of Sale (POS) and inventory management system with **Brazilian
 - **Authentication** with email/password via Better Auth
 - **API Documentation** auto-generated interactive docs via Scalar at `/api/docs`
 
-### Fiscal (Brazilian NF-e / NFC-e)
-- **Electronic Invoicing** — NF-e (model 55, B2B) and NFC-e (model 65, consumer)
-- **Tax Calculations** — ICMS (15 CST + 10 CSOSN), PIS, COFINS, IPI, II, ISSQN
-- **SEFAZ Integration** — authorize, cancel, void, query with mTLS client certificate
-- **Digital Signature** — XML signing with A1 e-CNPJ certificate (PFX/PKCS#12)
-- **QR Code** — NFC-e QR code generation (v2.00/v3.00, online + offline)
-- **Contingency** — SVC-AN, SVC-RS (NF-e) and EPEC (NFC-e) offline modes
-- **IBS/CBS Reform Events** — 14 event types for the Brazilian tax reform (PL_010)
-- **Settings UI** — company info, address, certificate, CSC, default tax codes
-- **CEP Auto-fill** — address completion via ViaCEP + BrasilAPI
+### Operations
+- **Transaction Management** with income/expense categories
+- **Nested Admin Navigation** for transaction list and category setup
+- **Company Settings** for business profile and Indonesian address data
+- **Payment Tracking** with paid, partial and unpaid order status
+- **Invoice View** with order item snapshots and print action
 
 ## Architecture
 
@@ -63,19 +53,14 @@ flowchart LR
   Drizzle["Drizzle ORM"]
   PGLite["PGLite (PostgreSQL WASM)"]
   Scalar["Scalar /api/docs"]
-  Fiscal["Fiscal Module (NF-e / NFC-e)"]
-  SEFAZ["SEFAZ (tax authority)"]
 
   Browser -->|HTTP request| Proxy
   Proxy -->|authenticated| tRPC
   Proxy -->|/api/auth/*| Auth
   tRPC -->|protectedProcedure| Drizzle
-  tRPC -->|fiscal routes| Fiscal
   Drizzle -->|SQL| PGLite
   tRPC -.->|OpenAPI spec| Scalar
   Auth -->|session| PGLite
-  Fiscal -->|build XML + sign| SEFAZ
-  Fiscal -->|persist| Drizzle
 ```
 
 ## Tech Stack
@@ -89,12 +74,10 @@ flowchart LR
 | API | tRPC v11 (end-to-end type safety) |
 | Auth | Better Auth |
 | API Docs | Scalar (OpenAPI 3.0) |
-| XML Signing | xml-crypto |
-| XML Parsing | fast-xml-parser |
 | Runtime | Bun |
 | i18n | next-intl (en + id) |
 | Monorepo | Turborepo, Biome |
-| Fiscal Module | @finopenpos/fiscal (standalone package) |
+| Monorepo Packages | @finopenpos/ui, @finopenpos/auth, @finopenpos/db, @finopenpos/api |
 
 ## Quick Start
 
@@ -118,7 +101,7 @@ bun run dev
 
 Open http://localhost:3001 and use the **Fill demo credentials** button to sign in with the test account (`test@example.com` / `test1234`).
 
-> The first `bun run dev` automatically creates the database at `apps/web/data/pglite`, pushes the schema via Drizzle and runs the seed with demo data (20 customers, 32 products, 40 orders, 25 transactions) + ~5570 IBGE cities.
+> The first `bun run dev` automatically creates the database at `apps/web/data/pglite`, pushes the schema via Drizzle and runs the seed with demo data (customers, products, orders, payment methods, transactions) plus ~5570 IBGE cities. Category tables such as `product_categories` and `transaction_categories` start empty and are managed from the UI.
 
 ## Scripts
 
@@ -128,7 +111,6 @@ Open http://localhost:3001 and use the **Fill demo credentials** button to sign 
 | `bun run dev:web` | Start only the web app |
 | `bun run check` | Lint and format with Biome |
 | `cd apps/web && bun test` | Run tRPC router tests |
-| `cd packages/fiscal && bun test` | Run fiscal module tests (754 tests) |
 | `cd apps/web && bun run prepare-prod` | Migrate from PGLite to real PostgreSQL |
 
 ## Project Structure
@@ -142,142 +124,22 @@ FinOpenPOS/
 │       │   ├── components/     # UI components (shadcn + custom)
 │       │   ├── lib/
 │       │   │   ├── db/         # Drizzle schema + PGLite singleton
-│       │   │   ├── invoice-service.ts    # Invoice lifecycle orchestrator
-│       │   │   ├── invoice-repository.ts # Invoice persistence (Drizzle)
-│       │   │   ├── fiscal-settings-repository.ts
-│       │   │   └── trpc/       # tRPC routers (business + fiscal)
+│       │   │   └── trpc/       # tRPC routers (business APIs)
 │       │   ├── messages/       # i18n (en.ts, id.ts)
 │       │   └── proxy.ts        # Next.js 16 middleware
 │       ├── scripts/            # DB ensure, ER gen, prepare-prod
 │       └── data/               # PGLite database (gitignored)
 ├── packages/
-│   └── fiscal/                 # @finopenpos/fiscal — standalone fiscal library
-│       └── src/
-│           ├── __tests__/      # 754 tests (ported from PHP sped-nfe)
-│           ├── value-objects/   # AccessKey, TaxId
-│           ├── tax-icms.ts     # ICMS tax engine (25 variants)
-│           ├── tax-pis-cofins-ipi.ts  # PIS/COFINS/IPI/II
-│           ├── xml-builder.ts  # NF-e XML generation
-│           ├── certificate.ts  # PFX extraction + XML signing
-│           ├── sefaz-*.ts      # SEFAZ communication layer
-│           └── ...             # 30+ modules (see docs/)
+│   ├── api/                    # Shared API package
+│   ├── auth/                   # Better Auth integration
+│   ├── db/                     # Shared Drizzle schema/types
+│   └── ui/                     # Shared UI components
 ├── turbo.json                  # Turborepo task config
 ├── biome.json                  # Linter/formatter config
 ├── Dockerfile                  # Dev (PGLite) Docker image
 ├── Dockerfile.production       # Production (PostgreSQL) Docker image
-└── docs/                       # Detailed fiscal documentation (12 files)
+└── docs/                       # Product, database and roadmap documentation
 ```
-
-## Fiscal Module (NF-e / NFC-e)
-
-The fiscal module lives in `packages/fiscal/` as `@finopenpos/fiscal` — a standalone package with zero database dependencies. It can be used independently in any TypeScript/JavaScript project.
-
-The fiscal module implements complete Brazilian electronic invoicing following the SEFAZ MOC 4.00 specification, ported from the PHP [sped-nfe](https://github.com/nfephp-org/sped-nfe) library to TypeScript with DDD architecture.
-
-### Invoice Lifecycle
-
-```mermaid
-flowchart TD
-  Start([Order placed]) --> LoadSettings[Load fiscal settings + certificate]
-  LoadSettings --> BuildXML[Build NF-e/NFC-e XML from order items]
-  BuildXML --> CalcTax[Calculate taxes ICMS + PIS + COFINS + IPI]
-  CalcTax --> GenKey[Generate access key 44-digit mod-11]
-  GenKey --> Sign[Sign XML with A1 e-CNPJ certificate]
-  Sign --> SendSEFAZ{Send to SEFAZ}
-
-  SendSEFAZ -->|cStat 100| Authorized[Authorized ✓]
-  SendSEFAZ -->|cStat 110| Denied[Denied ✗]
-  SendSEFAZ -->|timeout| Contingency{Model?}
-
-  Contingency -->|NFC-e 65| Offline[Save offline status=contingency]
-  Contingency -->|NF-e 55| Error[Throw error]
-
-  Authorized --> AttachProto[Attach protocol nfeProc XML]
-  AttachProto --> SaveDB[(Save to DB invoice + items)]
-  Offline --> SaveDB
-  Denied --> SaveDB
-
-  SaveDB --> IncrNumber[Increment next number]
-
-  Authorized -.->|later| Cancel[Cancel invoice]
-  Cancel --> EventXML[Build cancellation event XML]
-  EventXML --> SignEvent[Sign + send to SEFAZ]
-
-  Offline -.->|connection back| Sync[Sync pending invoices]
-```
-
-### Tax Engine
-
-```mermaid
-flowchart LR
-  subgraph Domain["Domain Layer (pure logic)"]
-    ICMS["tax-icms.ts 15 CST + 10 CSOSN"]
-    PIS["tax-pis-cofins-ipi.ts PIS / COFINS / IPI / II"]
-    TE["tax-element.ts TaxElement interface"]
-  end
-
-  subgraph Infra["Infrastructure Layer"]
-    XB["xml-builder.ts Full NF-e XML"]
-    XU["xml-utils.ts tag() + escapeXml()"]
-    FU["format-utils.ts cents → '10.50'"]
-  end
-
-  ICMS -->|returns TaxElement| TE
-  PIS -->|returns TaxElement| TE
-  TE -->|serializeTaxElement| XB
-  XB --> XU
-  ICMS --> FU
-  PIS --> FU
-```
-
-Tax modules never import XML code — they return `TaxElement` structures that the builder serializes. This keeps domain logic pure and testable.
-
-### SEFAZ Communication
-
-```mermaid
-sequenceDiagram
-  participant App as Invoice Service
-  participant Builder as Request Builder
-  participant Cert as Certificate
-  participant Transport as SEFAZ Transport
-  participant SEFAZ as SEFAZ Web Service
-
-  App->>Builder: buildAuthorizationRequestXml(signedNFe)
-  App->>Cert: extractCertFromPfx(pfx, password)
-  Cert-->>App: PEM cert + key
-
-  App->>Transport: sefazRequest(url, xml, cert, key)
-  Transport->>Transport: Build SOAP 1.2 envelope
-  Transport->>Transport: Write PEM to temp files
-  Transport->>SEFAZ: curl --cert cert.pem --key key.pem (mTLS)
-  SEFAZ-->>Transport: SOAP response
-  Transport->>Transport: Extract content from SOAP body
-  Transport-->>App: { httpStatus, body, content }
-
-  App->>App: parseAuthorizationResponse(content)
-  App->>App: attachProtocol(request, response)
-```
-
-> **Why curl?** Bun's `node:https` Agent does not support PFX for mTLS. The workaround extracts PEM from PFX via openssl and uses curl for the HTTPS request.
-
-### Detailed Documentation
-
-The [`docs/`](docs/) folder contains 12 in-depth documents:
-
-| Document | Topic |
-|----------|-------|
-| [00-architecture.md](docs/00-architecture.md) | Layers, dependency graph, numeric conventions |
-| [01-tax-engine.md](docs/01-tax-engine.md) | ICMS/PIS/COFINS/IPI, TaxElement pattern |
-| [02-xml-generation.md](docs/02-xml-generation.md) | xml-builder, complement, NF-e XML structure |
-| [03-sefaz-communication.md](docs/03-sefaz-communication.md) | Transport, URLs, request builders, reform events |
-| [04-certificate-signing.md](docs/04-certificate-signing.md) | PFX extraction, XML digital signature |
-| [05-value-objects.md](docs/05-value-objects.md) | AccessKey (mod-11), TaxId (CPF/CNPJ) |
-| [06-invoice-workflow.md](docs/06-invoice-workflow.md) | Invoice service lifecycle, repositories |
-| [07-contingency.md](docs/07-contingency.md) | SVC-AN/SVC-RS, EPEC, offline modes |
-| [08-qrcode.md](docs/08-qrcode.md) | NFC-e QR code v2.00/v3.00 |
-| [09-txt-conversion.md](docs/09-txt-conversion.md) | SPED TXT legacy format conversion |
-| [10-database-schema.md](docs/10-database-schema.md) | Fiscal tables, multi-tenancy |
-| [11-utilities.md](docs/11-utilities.md) | GTIN, CEP lookup, state codes |
 
 ## API
 
@@ -293,60 +155,27 @@ The raw OpenAPI 3.0 spec is available at `/api/openapi.json`.
 
 | Router | Procedures | Description |
 |--------|-----------|-------------|
-| `products` | `list`, `create`, `update`, `delete` | Product CRUD with stock and categories |
-| `customers` | `list`, `create`, `update`, `delete` | Customer CRUD with status |
-| `orders` | `list`, `create`, `update`, `delete` | Order management with items and transactions |
+| `products` | `list`, `create`, `update`, `delete` | Product CRUD with stock, product/service type and categories |
+| `productCategories` | `list`, `create` | Product category setup |
+| `customers` | `list`, `create`, `update`, `delete` | Customer CRUD with required phone and optional email/address |
+| `orders` | `list`, `get`, `create`, `update`, `delete`, `receivePayment` | Order lifecycle, item snapshots and payment tracking |
 | `transactions` | `list`, `create`, `update`, `delete` | Income/expense transaction logging |
+| `transactionCategories` | `list`, `create` | Income/expense category setup for transactions |
 | `paymentMethods` | `list`, `create`, `update`, `delete` | Payment method management |
 | `dashboard` | `stats` | Aggregated revenue, expenses, profit, cash flow, margins |
-| `fiscal` | `list`, `getById`, `issue`, `cancel`, `void`, `sync` | Invoice management |
-| `fiscalSettings` | `get`, `upsert`, `testConnection`, `getCertificateInfo` | Fiscal configuration |
-| `cities` | `listByState` | IBGE city lookup for fiscal address |
+| `companySettings` | `get`, `upsert` | Business profile, locale and address settings |
+| `cities` | `listByState` | Indonesian city lookup |
 
 ## Testing
 
-840 tests across 2 test suites (754 fiscal + 86 tRPC), all passing with 0 failures.
+Run the web router and app checks from the workspace:
 
 ```bash
-# tRPC router tests (from apps/web)
 cd apps/web && bun test
-
-# Fiscal module tests (from packages/fiscal)
-cd packages/fiscal && bun test
-
-# Coverage report
-cd apps/web && bun run test:coverage
+bun run check-types
 ```
 
-> **Note**: Run fiscal and tRPC tests separately — Bun can segfault on large parallel runs.
-
-```mermaid
-flowchart TB
-  subgraph FiscalTests["Fiscal Tests (754)"]
-    TaxTests["Tax engine ICMS / PIS / COFINS / IPI"]
-    XMLTests["XML builder + complement"]
-    PortedTests["Ported from PHP sped-nfe test suite"]
-    QRTests["QR code + certificate"]
-  end
-
-  subgraph tRPCTests["tRPC Tests (86)"]
-    PGLite["PGLite (in-memory)"]
-    Mock["mock.module (@/lib/db)"]
-    Caller["createCallerFactory"]
-  end
-
-  Schema["schema.ts"] -->|DDL| PGLite
-  Mock -->|injects| PGLite
-  Caller -->|calls router| Mock
-
-  subgraph Verifications
-    CRUD["CRUD → list() confirms state"]
-    Isolation["cross-user → invisible"]
-    Zod["Zod reject → unchanged"]
-  end
-
-  Caller --> Verifications
-```
+The tRPC router tests use PGLite in-memory databases with mocked DB bindings to verify CRUD, cross-user isolation, validation errors and payment/order flows.
 
 ## Docker Deploy
 
@@ -409,6 +238,7 @@ erDiagram
 
     orders {
         serial id PK
+        varchar order_number
         integer customer_id FK
         integer total_amount
         varchar user_uid
@@ -431,6 +261,7 @@ erDiagram
 
     transactions {
         serial id PK
+        varchar transaction_number
         text description
         integer order_id FK
         integer payment_method_id FK

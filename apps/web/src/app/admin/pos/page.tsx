@@ -36,14 +36,17 @@ import {
 	PlusIcon,
 	SearchIcon,
 	Trash2Icon,
+	CheckCircle2Icon,
+	PrinterIcon,
 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { z } from "zod/v4";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
+import Link from "next/link";
 
 type Product = RouterOutputs["products"]["list"][number];
 type POSProduct = Pick<
@@ -84,12 +87,29 @@ export default function POSPage() {
 
 	const loading = loadingProducts || loadingCustomers || loadingMethods;
 
+	const [successOrder, setSuccessOrder] = useState<any | null>(null);
+
+	const { data: companySettings } = useQuery(
+		trpc.companySettings.get.queryOptions(),
+	);
+
 	const createOrderMutation = useMutation(
 		trpc.orders.create.mutationOptions({
-			onSuccess: () => {
+			onSuccess: (order) => {
 				queryClient.invalidateQueries(trpc.orders.list.queryOptions());
 				queryClient.invalidateQueries(trpc.products.list.queryOptions());
 				toast.success(tOrders("createdSuccessfully"));
+				setSuccessOrder({
+					id: order.id,
+					order_number: order.order_number,
+					created_at: order.created_at,
+					total_amount: order.total_amount,
+					paid_amount: order.paid_amount,
+					payment_status: order.payment_status,
+					customer: selectedCustomer,
+					items: [...selectedProducts],
+					paymentMethodName: paymentMethod?.name,
+				});
 				setSelectedProducts([]);
 				setSelectedCustomer(null);
 				setPaymentMethod(null);
@@ -124,6 +144,15 @@ export default function POSPage() {
 	} | null>(null);
 	const [productSearch, setProductSearch] = useState("");
 	const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false);
+	const selectedCustomerPhone = selectedCustomer
+		? customers.find((customer) => customer.id === selectedCustomer.id)?.phone
+		: undefined;
+	const selectedCustomerLabel = selectedCustomer
+		? selectedCustomerPhone
+			? `${selectedCustomer.name} — ${selectedCustomerPhone}`
+			: selectedCustomer.name
+		: "";
+	const selectedPaymentMethodLabel = paymentMethod?.name ?? "";
 
 	const customerForm = useForm({
 		defaultValues: {
@@ -308,6 +337,7 @@ export default function POSPage() {
 										: customer.name,
 								}))}
 								placeholder={t("selectCustomer")}
+								value={selectedCustomerLabel}
 								onSelect={handleSelectCustomer}
 							/>
 						</div>
@@ -325,6 +355,7 @@ export default function POSPage() {
 						<Combobox
 							items={paymentMethods}
 							placeholder={t("selectPaymentMethod")}
+							value={selectedPaymentMethodLabel}
 							onSelect={handleSelectPaymentMethod}
 						/>
 					</div>
@@ -605,6 +636,234 @@ export default function POSPage() {
 					</form>
 				</DialogContent>
 			</Dialog>
+
+			{/* Dialog Sukses Transaksi / Cetak Struk */}
+			{successOrder && (
+				<Dialog
+					open={!!successOrder}
+					onOpenChange={(open) => {
+						if (!open) setSuccessOrder(null);
+					}}
+				>
+					<DialogContent className="max-w-md print:hidden">
+						<DialogHeader>
+							<DialogTitle className="flex items-center gap-2 text-green-600">
+								<CheckCircle2Icon className="h-5 w-5" />
+								{tOrders("createdSuccessfully")}
+							</DialogTitle>
+						</DialogHeader>
+						<div className="space-y-4 py-4">
+							<p className="text-sm text-muted-foreground text-center">
+								Transaksi{" "}
+								<strong>
+									{successOrder.order_number ?? `#${successOrder.id}`}
+								</strong>{" "}
+								berhasil disimpan.
+							</p>
+
+							{/* Preview struk di layar */}
+							<div className="border p-4 rounded bg-muted/20 font-mono text-xs max-h-56 overflow-y-auto">
+								<div className="text-center font-bold mb-2">
+									PRATINJAU STRUK
+								</div>
+								<div className="flex justify-between">
+									<span>No. Transaksi:</span>
+									<span>
+										{successOrder.order_number ?? `#${successOrder.id}`}
+									</span>
+								</div>
+								<div className="flex justify-between">
+									<span>Tanggal:</span>
+									<span>
+										{successOrder.created_at
+											? new Date(successOrder.created_at).toLocaleString(
+													"id-ID",
+												)
+											: new Date().toLocaleString("id-ID")}
+									</span>
+								</div>
+								<div className="flex justify-between">
+									<span>Metode:</span>
+									<span>{successOrder.paymentMethodName}</span>
+								</div>
+								<hr className="my-2 border-dashed" />
+								<div className="space-y-1">
+									{successOrder.items.map((item: any) => (
+										<div key={item.id} className="flex justify-between">
+											<span>
+												{item.name} x{item.quantity}
+											</span>
+											<span>
+												Rp{" "}
+												{((item.price * item.quantity) / 100).toLocaleString(
+													"id-ID",
+												)}
+											</span>
+										</div>
+									))}
+								</div>
+								<hr className="my-2 border-dashed" />
+								<div className="flex justify-between font-bold">
+									<span>Total:</span>
+									<span>
+										Rp{" "}
+										{(successOrder.total_amount / 100).toLocaleString("id-ID")}
+									</span>
+								</div>
+								<div className="flex justify-between text-muted-foreground">
+									<span>Dibayar:</span>
+									<span>
+										Rp{" "}
+										{(successOrder.paid_amount / 100).toLocaleString("id-ID")}
+									</span>
+								</div>
+							</div>
+						</div>
+						<DialogFooter className="flex flex-col sm:flex-row gap-2">
+							<Button
+								variant="outline"
+								className="w-full sm:w-auto"
+								onClick={() => {
+									window.print();
+								}}
+							>
+								<PrinterIcon className="mr-2 h-4 w-4" />
+								Cetak Struk
+							</Button>
+							<Link
+								href={`/admin/orders/${successOrder.id}`}
+								className="w-full sm:w-auto"
+							>
+								<Button variant="secondary" className="w-full">
+									Detail Invoice
+								</Button>
+							</Link>
+							<Button
+								className="w-full sm:w-auto"
+								onClick={() => setSuccessOrder(null)}
+							>
+								Transaksi Baru
+							</Button>
+						</DialogFooter>
+					</DialogContent>
+				</Dialog>
+			)}
+
+			{/* Thermal Receipt Section for printing */}
+			{successOrder && (
+				<div
+					id="thermal-receipt"
+					className="hidden print:block print:absolute print:top-0 print:left-0 print:w-[80mm] print:bg-white print:text-black print:p-4 font-mono text-[10px] leading-tight"
+				>
+					<style
+						dangerouslySetInnerHTML={{
+							__html: `
+						@media print {
+							body * {
+								visibility: hidden;
+							}
+							#thermal-receipt, #thermal-receipt * {
+								visibility: visible;
+							}
+							#thermal-receipt {
+								position: absolute;
+								left: 0;
+								top: 0;
+								width: 80mm;
+								background: white;
+								color: black;
+								padding: 10px;
+							}
+							@page {
+								margin: 0;
+							}
+						}
+					`,
+						}}
+					/>
+					<div className="text-center border-b pb-2 mb-2">
+						<h2 className="font-bold text-sm uppercase">
+							{companySettings?.company_name || "FinOpenPOS"}
+						</h2>
+						{companySettings?.trade_name && (
+							<p className="text-[9px]">{companySettings.trade_name}</p>
+						)}
+						<p>
+							{companySettings?.street} No. {companySettings?.street_number}
+						</p>
+						<p>
+							{companySettings?.district}, {companySettings?.city_name}
+						</p>
+						{companySettings?.tax_id && <p>NPWP: {companySettings.tax_id}</p>}
+						{companySettings?.receipt_header && (
+							<p className="text-[9px] italic mt-1 border-t border-dashed pt-1">
+								{companySettings.receipt_header}
+							</p>
+						)}
+					</div>
+					<div className="space-y-1 mb-2">
+						<p>No: {successOrder.order_number ?? `#${successOrder.id}`}</p>
+						<p>
+							Tgl:{" "}
+							{successOrder.created_at
+								? new Date(successOrder.created_at).toLocaleString("id-ID")
+								: new Date().toLocaleString("id-ID")}
+						</p>
+						<p>Pelanggan: {successOrder.customer?.name || "Pelanggan Umum"}</p>
+					</div>
+					<div className="border-t border-b border-dashed py-2 my-2 space-y-1">
+						{successOrder.items.map((item: any) => (
+							<div key={item.id} className="flex justify-between">
+								<div className="max-w-[70%]">
+									<p>{item.name}</p>
+									<p className="text-gray-500">
+										{item.quantity} x Rp{" "}
+										{(item.price / 100).toLocaleString("id-ID")}
+									</p>
+								</div>
+								<p>
+									Rp{" "}
+									{((item.price * item.quantity) / 100).toLocaleString("id-ID")}
+								</p>
+							</div>
+						))}
+					</div>
+					<div className="space-y-1 text-right">
+						<div className="flex justify-between font-bold">
+							<p>TOTAL:</p>
+							<p>
+								Rp {(successOrder.total_amount / 100).toLocaleString("id-ID")}
+							</p>
+						</div>
+						<div className="flex justify-between">
+							<p>Bayar ({successOrder.paymentMethodName || "Tunai"}):</p>
+							<p>
+								Rp {(successOrder.paid_amount / 100).toLocaleString("id-ID")}
+							</p>
+						</div>
+						<div className="flex justify-between border-t border-dashed pt-1">
+							<p>Sisa Tagihan:</p>
+							<p>
+								Rp{" "}
+								{Math.max(
+									0,
+									(successOrder.total_amount - successOrder.paid_amount) / 100,
+								).toLocaleString("id-ID")}
+							</p>
+						</div>
+					</div>
+					<div className="text-center border-t border-dashed pt-2 mt-4">
+						{companySettings?.receipt_footer ? (
+							<p>{companySettings.receipt_footer}</p>
+						) : (
+							<>
+								<p>Terima Kasih</p>
+								<p>Atas Kunjungan Anda</p>
+							</>
+						)}
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

@@ -295,6 +295,10 @@ const messages = {
 		addressComplement: "Address Details",
 		saved: "Company settings saved",
 		saveError: "Failed to save company settings",
+		documentSettings: "Document Settings (Receipt & Invoice)",
+		receiptHeader: "POS Receipt Header (Optional)",
+		receiptFooter: "POS Receipt Footer",
+		invoiceTerms: "Invoice Terms & Notes",
 	},
 
 	error: {

@@ -83,7 +83,13 @@ export default function OrdersPage() {
 	];
 
 	const tableColumns: Column<Order>[] = [
-		{ key: "id", header: t("orderId"), sortable: true },
+		{
+			key: "order_number",
+			header: t("orderId"),
+			sortable: true,
+			accessorFn: (row) => row.order_number ?? `#${row.id}`,
+			render: (row) => row.order_number ?? `#${row.id}`,
+		},
 		{
 			key: "customer",
 			header: t("customer"),
@@ -175,7 +181,11 @@ export default function OrdersPage() {
 	];
 
 	const exportColumns: ExportColumn<Order>[] = [
-		{ key: "id", header: t("orderId"), getValue: (o) => o.id },
+		{
+			key: "order_number",
+			header: t("orderId"),
+			getValue: (o) => o.order_number ?? `#${o.id}`,
+		},
 		{
 			key: "customer",
 			header: t("customer"),

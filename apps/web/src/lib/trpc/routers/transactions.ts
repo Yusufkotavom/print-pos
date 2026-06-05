@@ -4,8 +4,14 @@ import { db } from "@/lib/db";
 import { transactions } from "@/lib/db/schema";
 import { protectedProcedure, router } from "../init";
 
+function formatSequenceNumber(prefix: string, id: number) {
+	const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+	return `${prefix}-${date}-${String(id).padStart(4, "0")}`;
+}
+
 const transactionSchema = z.object({
 	id: z.number(),
+	transaction_number: z.string().nullable(),
 	description: z.string().nullable(),
 	amount: z.number(),
 	type: z.string().nullable(),
@@ -56,9 +62,19 @@ export const transactionsRouter = router({
 		)
 		.output(transactionSchema)
 		.mutation(async ({ ctx, input }) => {
-			const [data] = await db
+			const [createdTransaction] = await db
 				.insert(transactions)
 				.values({ ...input, user_uid: ctx.user.id })
+				.returning();
+			const [data] = await db
+				.update(transactions)
+				.set({
+					transaction_number: formatSequenceNumber(
+						"TRX",
+						createdTransaction.id,
+					),
+				})
+				.where(eq(transactions.id, createdTransaction.id))
 				.returning();
 			return data;
 		}),

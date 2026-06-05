@@ -10,8 +10,14 @@ import {
 } from "@/lib/db/schema";
 import { protectedProcedure, router } from "../init";
 
+function formatSequenceNumber(prefix: string, id: number) {
+	const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+	return `${prefix}-${date}-${String(id).padStart(4, "0")}`;
+}
+
 const orderWithCustomerSchema = z.object({
 	id: z.number(),
+	order_number: z.string().nullable(),
 	customer_id: z.number().nullable(),
 	total_amount: z.number(),
 	status: z.string().nullable(),
@@ -24,6 +30,7 @@ const orderWithCustomerSchema = z.object({
 
 const orderDetailSchema = z.object({
 	id: z.number(),
+	order_number: z.string().nullable(),
 	customer_id: z.number().nullable(),
 	total_amount: z.number(),
 	status: z.string().nullable(),
@@ -137,7 +144,7 @@ export const ordersRouter = router({
 							? "partial"
 							: "unpaid";
 
-				const [orderData] = await tx
+				const [createdOrder] = await tx
 					.insert(orders)
 					.values({
 						customer_id: input.customerId,
@@ -147,6 +154,12 @@ export const ordersRouter = router({
 						user_uid: ctx.user.id,
 						status: paymentStatus === "paid" ? "completed" : "pending",
 					})
+					.returning();
+				const orderNumber = formatSequenceNumber("INV", createdOrder.id);
+				const [orderData] = await tx
+					.update(orders)
+					.set({ order_number: orderNumber })
+					.where(eq(orders.id, createdOrder.id))
 					.returning();
 
 				const itemValues = [];
@@ -193,16 +206,28 @@ export const ordersRouter = router({
 				await tx.insert(orderItems).values(itemValues);
 
 				if (paidAmount > 0) {
-					await tx.insert(transactions).values({
-						order_id: orderData.id,
-						payment_method_id: input.paymentMethodId,
-						amount: paidAmount,
-						user_uid: ctx.user.id,
-						status: "completed",
-						category: "selling",
-						type: "income",
-						description: `Payment for order #${orderData.id}`,
-					});
+					const [createdTransaction] = await tx
+						.insert(transactions)
+						.values({
+							order_id: orderData.id,
+							payment_method_id: input.paymentMethodId,
+							amount: paidAmount,
+							user_uid: ctx.user.id,
+							status: "completed",
+							category: "selling",
+							type: "income",
+							description: `Payment for order ${orderNumber}`,
+						})
+						.returning();
+					await tx
+						.update(transactions)
+						.set({
+							transaction_number: formatSequenceNumber(
+								"TRX",
+								createdTransaction.id,
+							),
+						})
+						.where(eq(transactions.id, createdTransaction.id));
 				}
 
 				const customer = input.customerId
@@ -300,16 +325,28 @@ export const ordersRouter = router({
 					.where(and(eq(orders.id, input.id), eq(orders.user_uid, ctx.user.id)))
 					.returning();
 
-				await tx.insert(transactions).values({
-					order_id: input.id,
-					payment_method_id: input.paymentMethodId,
-					amount: nextPaidAmount - order.paid_amount,
-					user_uid: ctx.user.id,
-					status: "completed",
-					category: "selling",
-					type: "income",
-					description: `Payment for order #${input.id}`,
-				});
+				const [createdTransaction] = await tx
+					.insert(transactions)
+					.values({
+						order_id: input.id,
+						payment_method_id: input.paymentMethodId,
+						amount: nextPaidAmount - order.paid_amount,
+						user_uid: ctx.user.id,
+						status: "completed",
+						category: "selling",
+						type: "income",
+						description: `Payment for order ${order.order_number ?? `#${input.id}`}`,
+					})
+					.returning();
+				await tx
+					.update(transactions)
+					.set({
+						transaction_number: formatSequenceNumber(
+							"TRX",
+							createdTransaction.id,
+						),
+					})
+					.where(eq(transactions.id, createdTransaction.id));
 
 				const customer = updated.customer_id
 					? await tx.query.customers.findFirst({

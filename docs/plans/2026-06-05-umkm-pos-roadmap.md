@@ -338,6 +338,17 @@ Butuh garansi per service/sparepart:
 
 ## 7. Perubahan Data Model yang Disarankan
 
+Status implementasi saat ini:
+
+- Sudah ada `products.product_type`
+- Sudah ada snapshot `order_items.item_name` dan `order_items.item_type`
+- Sudah ada `orders.paid_amount` dan `orders.payment_status`
+- Sudah ada CRUD `transaction_categories` untuk pisah pemasukan dan pengeluaran
+- Sidebar admin untuk modul transaksi sudah nested (`List Transaksi`, `Kategori`)
+- Belum ada tabel `payments` terpisah
+- Belum ada `stock_movements`
+- Belum ada field lanjutan seperti `sku`, `unit`, `track_stock`, `fulfillment_status`
+
 ### 7.1 Products
 
 Tambahkan:

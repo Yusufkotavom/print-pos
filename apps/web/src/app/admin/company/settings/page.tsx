@@ -20,6 +20,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@finopenpos/ui/components/select";
+import {
+	Tabs,
+	TabsContent,
+	TabsList,
+	TabsTrigger,
+} from "@finopenpos/ui/components/tabs";
+import { Textarea } from "@finopenpos/ui/components/textarea";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { useTRPC } from "@/lib/trpc/client";
@@ -103,6 +110,10 @@ export default function CompanySettingsPage() {
 			district: settings?.district ?? "",
 			postal_code: settings?.postal_code ?? "",
 			address_detail: settings?.address_detail ?? "",
+			receipt_header: settings?.receipt_header ?? "",
+			receipt_footer: settings?.receipt_footer ?? "",
+			invoice_terms: settings?.invoice_terms ?? "",
+			invoice_template: settings?.invoice_template ?? "standard",
 		},
 		onSubmit: ({ value }) => {
 			upsertMutation.mutate({
@@ -121,6 +132,10 @@ export default function CompanySettingsPage() {
 				district: value.district,
 				postal_code: value.postal_code,
 				address_detail: value.address_detail || undefined,
+				receipt_header: value.receipt_header || undefined,
+				receipt_footer: value.receipt_footer || undefined,
+				invoice_terms: value.invoice_terms || undefined,
+				invoice_template: value.invoice_template || undefined,
 			});
 		},
 	});
@@ -143,6 +158,10 @@ export default function CompanySettingsPage() {
 		form.setFieldValue("district", settings.district ?? "");
 		form.setFieldValue("postal_code", settings.postal_code ?? "");
 		form.setFieldValue("address_detail", settings.address_detail ?? "");
+		form.setFieldValue("receipt_header", settings.receipt_header ?? "");
+		form.setFieldValue("receipt_footer", settings.receipt_footer ?? "");
+		form.setFieldValue("invoice_terms", settings.invoice_terms ?? "");
+		form.setFieldValue("invoice_template", settings.invoice_template ?? "standard");
 	}, [form, settings]);
 
 	if (isLoading) return null;
@@ -156,9 +175,16 @@ export default function CompanySettingsPage() {
 			}}
 			className="space-y-6 max-w-3xl"
 		>
-			<Card>
-				<CardHeader>
-					<CardTitle>{t("companyInfo")}</CardTitle>
+			<Tabs defaultValue="general" className="w-full">
+				<TabsList className="grid w-full grid-cols-2 mb-6">
+					<TabsTrigger value="general">{t("companyInfo")}</TabsTrigger>
+					<TabsTrigger value="documents">{t("documentSettings")}</TabsTrigger>
+				</TabsList>
+				
+				<TabsContent value="general" className="space-y-6">
+					<Card>
+						<CardHeader>
+							<CardTitle>{t("companyInfo")}</CardTitle>
 				</CardHeader>
 				<CardContent className="grid gap-4">
 					<div className="grid gap-4 sm:grid-cols-2">
@@ -322,6 +348,70 @@ export default function CompanySettingsPage() {
 					</form.Field>
 				</CardContent>
 			</Card>
+				</TabsContent>
+
+				<TabsContent value="documents" className="space-y-6">
+					<Card>
+						<CardHeader>
+							<CardTitle>{t("documentSettings")}</CardTitle>
+				</CardHeader>
+				<CardContent className="grid gap-4">
+					<form.Field name="receipt_header">
+						{(field) => (
+							<FormTextField
+								field={field}
+								label={t("receiptHeader")}
+								placeholder="Contoh: Selamat Datang di Toko Kami!"
+							/>
+						)}
+					</form.Field>
+					<form.Field name="receipt_footer">
+						{(field) => (
+							<FormTextField
+								field={field}
+								label={t("receiptFooter")}
+								placeholder="Contoh: Terima Kasih Atas Kunjungan Anda"
+							/>
+						)}
+					</form.Field>
+					<form.Field name="invoice_terms">
+						{(field) => (
+							<div className="space-y-2">
+								<Label>{t("invoiceTerms")}</Label>
+								<Textarea
+									value={field.state.value}
+									onChange={(e) => field.handleChange(e.target.value)}
+									placeholder="Contoh: Pembayaran jatuh tempo dalam 14 hari."
+									rows={4}
+								/>
+							</div>
+						)}
+					</form.Field>
+					<form.Field name="invoice_template">
+						{(field) => (
+							<div className="space-y-2">
+								<Label>Template Invoice PDF</Label>
+								<Select
+									value={field.state.value}
+									onValueChange={field.handleChange}
+								>
+									<SelectTrigger>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="standard">Standard / Modern</SelectItem>
+										<SelectItem value="elegant">Elegant / Bisnis</SelectItem>
+										<SelectItem value="minimalist">Minimalist</SelectItem>
+										<SelectItem value="receipt">Plain / POS Receipt</SelectItem>
+									</SelectContent>
+								</Select>
+							</div>
+						)}
+					</form.Field>
+				</CardContent>
+			</Card>
+				</TabsContent>
+			</Tabs>
 
 			<div className="flex justify-end">
 				<Button type="submit" disabled={upsertMutation.isPending} size="lg">

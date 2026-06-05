@@ -26,13 +26,20 @@ import {
 	TableRow,
 } from "@finopenpos/ui/components/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftIcon, PrinterIcon } from "lucide-react";
+import { ArrowLeftIcon, DownloadIcon, PrinterIcon } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
+import dynamic from "next/dynamic";
+import { InvoicePDF } from "@/components/invoice-pdf";
+
+const PDFDownloadLink = dynamic(
+	() => import("@react-pdf/renderer").then((mod) => mod.PDFDownloadLink),
+	{ ssr: false },
+);
 
 export default function OrderDetailPage({
 	params,
@@ -54,6 +61,35 @@ export default function OrderDetailPage({
 	const locale = useLocale();
 	const [paymentMethodId, setPaymentMethodId] = useState<number | null>(null);
 	const [paymentAmount, setPaymentAmount] = useState("");
+
+	const [isMounted, setIsMounted] = useState(false);
+	useEffect(() => {
+		setIsMounted(true);
+	}, []);
+
+	const { data: companySettings } = useQuery(
+		trpc.companySettings.get.queryOptions(),
+	);
+
+	const pdfLabels = {
+		invoice: t("invoice"),
+		date: tc("date"),
+		status: t("paymentStatus"),
+		customer: t("customer"),
+		item: t("item"),
+		qty: t("quantity"),
+		price: t("unitPrice"),
+		subtotal: t("subtotal"),
+		total: tc("total"),
+		paidAmount: t("paidAmount"),
+		remainingAmount: t("remainingAmount"),
+		paid: t("paid"),
+		unpaid: t("unpaid"),
+		partial: t("partial"),
+		companyDetails: "Detail Perusahaan",
+		thankYou: "Terima kasih atas kunjungan Anda!",
+	};
+
 	const receivePaymentMutation = useMutation(
 		trpc.orders.receivePayment.mutationOptions({
 			onSuccess: () => {
@@ -119,6 +155,8 @@ export default function OrderDetailPage({
 		});
 	};
 
+	const orderNumber = order.order_number ?? `#${order.id}`;
+
 	return (
 		<div className="max-w-3xl space-y-6 print:max-w-none">
 			<div className="flex items-center justify-between gap-4 print:hidden">
@@ -129,18 +167,42 @@ export default function OrderDetailPage({
 						</Button>
 					</Link>
 					<h1 className="font-bold text-2xl">
-						{t("orderDetails")} #{order.id}
+						{t("orderDetails")} {orderNumber}
 					</h1>
 				</div>
-				<Button variant="outline" onClick={() => window.print()}>
-					<PrinterIcon className="mr-2 h-4 w-4" />
-					{t("printInvoice")}
-				</Button>
+				<div className="flex gap-2">
+					<Button
+						variant="outline"
+						onClick={() => window.open(`/api/orders/${order.id}/pdf`, "_blank")}
+					>
+						<PrinterIcon className="mr-2 h-4 w-4" />
+						{t("printInvoice")}
+					</Button>
+					{isMounted && order && (
+						<PDFDownloadLink
+							document={
+								<InvoicePDF
+									order={order}
+									companySettings={companySettings}
+									labels={pdfLabels}
+								/>
+							}
+							fileName={`invoice-${order.id}.pdf`}
+						>
+							{({ loading }) => (
+								<Button variant="default" disabled={loading}>
+									<DownloadIcon className="mr-2 h-4 w-4" />
+									{loading ? tc("loading") : "Download PDF"}
+								</Button>
+							)}
+						</PDFDownloadLink>
+					)}
+				</div>
 			</div>
 
 			<div className="hidden print:block">
 				<h1 className="font-bold text-3xl">
-					{t("invoice")} #{order.id}
+					{t("invoice")} {orderNumber}
 				</h1>
 				<p className="mt-1 text-muted-foreground text-sm">
 					{tc("date")}: {createdAtLabel}

@@ -52,6 +52,7 @@ export const customers = pgTable("customers", {
 
 export const orders = pgTable("orders", {
 	id: serial("id").primaryKey(),
+	order_number: varchar("order_number", { length: 32 }),
 	customer_id: integer("customer_id").references(() => customers.id),
 	total_amount: integer("total_amount").notNull(),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
@@ -92,6 +93,7 @@ export const paymentMethods = pgTable("payment_methods", {
 
 export const transactions = pgTable("transactions", {
 	id: serial("id").primaryKey(),
+	transaction_number: varchar("transaction_number", { length: 32 }),
 	description: text("description"),
 	order_id: integer("order_id").references(() => orders.id),
 	payment_method_id: integer("payment_method_id").references(
@@ -131,6 +133,10 @@ export const companySettings = pgTable("company_settings", {
 	district: varchar("district", { length: 100 }).notNull(),
 	postal_code: varchar("postal_code", { length: 10 }).notNull(),
 	address_detail: varchar("address_detail", { length: 100 }),
+	receipt_header: text("receipt_header"),
+	receipt_footer: text("receipt_footer"),
+	invoice_terms: text("invoice_terms"),
+	invoice_template: varchar("invoice_template", { length: 20 }).default("standard"),
 	created_at: timestamp("created_at").defaultNow(),
 	updated_at: timestamp("updated_at").defaultNow(),
 });

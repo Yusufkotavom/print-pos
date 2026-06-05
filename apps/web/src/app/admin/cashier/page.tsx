@@ -75,7 +75,13 @@ export default function Cashier() {
 	});
 
 	const tableColumns: Column<Transaction>[] = [
-		{ key: "id", header: "ID", sortable: true },
+		{
+			key: "transaction_number",
+			header: "No.",
+			sortable: true,
+			accessorFn: (row) => row.transaction_number ?? `#${row.id}`,
+			render: (row) => row.transaction_number ?? `#${row.id}`,
+		},
 		{ key: "description", header: tc("description"), sortable: true },
 		{ key: "category", header: tc("category"), hideOnMobile: true },
 		{

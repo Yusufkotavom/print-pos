@@ -52,6 +52,10 @@ export const companySettingsRouter = router({
 				district: z.string().min(1),
 				postal_code: z.string().min(4).max(10),
 				address_detail: z.string().optional(),
+				receipt_header: z.string().optional(),
+				receipt_footer: z.string().optional(),
+				invoice_terms: z.string().optional(),
+				invoice_template: z.string().optional(),
 			}),
 		)
 		.output(z.object({ success: z.boolean(), id: z.number() }))

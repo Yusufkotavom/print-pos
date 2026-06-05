@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { getTableName } from "drizzle-orm";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import * as schema from "../src/lib/db/schema";
@@ -95,6 +95,10 @@ function detectMarkerStyle(content: string): keyof typeof MARKERS | null {
 }
 
 function injectIntoFile(filePath: string, mermaid: string) {
+	if (!existsSync(filePath)) {
+		console.warn(`File ${filePath} not found, skipping`);
+		return;
+	}
 	const content = readFileSync(filePath, "utf-8");
 	const style = detectMarkerStyle(content);
 
@@ -120,6 +124,6 @@ const mermaid = generateMermaid();
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "../../..");
-injectIntoFile(resolve(root, "README.md"), mermaid);
-injectIntoFile(resolve(root, "README.ptBR.md"), mermaid);
-injectIntoFile(resolve(root, "apps/docs/content/docs/database.mdx"), mermaid);
+injectIntoFile(resolve(root, "README.md").trim(), mermaid);
+injectIntoFile(resolve(root, "README.ptBR.md").trim(), mermaid);
+injectIntoFile(resolve(root, "apps/docs/content/docs/database.mdx").trim(), mermaid);
