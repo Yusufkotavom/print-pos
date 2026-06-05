@@ -55,8 +55,9 @@ export default function CustomersPage() {
 
 	const customerFormSchema = z.object({
 		name: z.string().min(1, t("nameRequired")),
-		email: z.string().email(t("invalidEmail")),
-		phone: z.string(),
+		email: z.union([z.string().email(t("invalidEmail")), z.literal("")]),
+		phone: z.string().min(1, t("phoneRequired")),
+		address: z.string(),
 		status: z.enum(["active", "inactive"]),
 	});
 
@@ -75,6 +76,7 @@ export default function CustomersPage() {
 		},
 		{ key: "email", header: tc("email"), sortable: true },
 		{ key: "phone", header: tc("phone"), hideOnMobile: true },
+		{ key: "address", header: tc("address"), hideOnMobile: true },
 		{
 			key: "status",
 			header: tc("status"),
@@ -93,8 +95,13 @@ export default function CustomersPage() {
 
 	const exportColumns: ExportColumn<Customer>[] = [
 		{ key: "name", header: tc("name"), getValue: (c) => c.name },
-		{ key: "email", header: tc("email"), getValue: (c) => c.email },
+		{ key: "email", header: tc("email"), getValue: (c) => c.email ?? "" },
 		{ key: "phone", header: tc("phone"), getValue: (c) => c.phone ?? "" },
+		{
+			key: "address",
+			header: tc("address"),
+			getValue: (c) => c.address ?? "",
+		},
 		{
 			key: "status",
 			header: tc("status"),
@@ -140,6 +147,7 @@ export default function CustomersPage() {
 			name: "",
 			email: "",
 			phone: "",
+			address: "",
 			status: "active" as "active" | "inactive",
 		},
 		validators: {
@@ -148,8 +156,9 @@ export default function CustomersPage() {
 		onSubmit: ({ value }) => {
 			const payload = {
 				name: value.name,
-				email: value.email,
-				phone: value.phone || undefined,
+				email: value.email || undefined,
+				phone: value.phone,
+				address: value.address || undefined,
 				status: value.status,
 			};
 			if (isEditing) {
@@ -166,8 +175,9 @@ export default function CustomersPage() {
 			const q = searchTerm.toLowerCase();
 			return (
 				c.name.toLowerCase().includes(q) ||
-				c.email.toLowerCase().includes(q) ||
-				(c.phone ?? "").includes(searchTerm)
+				(c.email ?? "").toLowerCase().includes(q) ||
+				c.phone.includes(searchTerm) ||
+				(c.address ?? "").toLowerCase().includes(q)
 			);
 		});
 	}, [customers, statusFilter, searchTerm]);
@@ -182,8 +192,9 @@ export default function CustomersPage() {
 		setEditingId(c.id);
 		form.reset();
 		form.setFieldValue("name", c.name);
-		form.setFieldValue("email", c.email);
+		form.setFieldValue("email", c.email ?? "");
 		form.setFieldValue("phone", c.phone ?? "");
+		form.setFieldValue("address", c.address ?? "");
 		form.setFieldValue(
 			"status",
 			(c.status ?? "active") as "active" | "inactive",
@@ -357,8 +368,30 @@ export default function CustomersPage() {
 								{(field) => (
 									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
 										<Label htmlFor="phone">{tc("phone")}</Label>
+										<div className="col-span-3">
+											<Input
+												id="phone"
+												value={field.state.value}
+												onChange={(e) => field.handleChange(e.target.value)}
+												onBlur={field.handleBlur}
+												error={
+													field.state.meta.errors.length > 0
+														? field.state.meta.errors
+																.map((e) => e?.message ?? e)
+																.join(", ")
+														: undefined
+												}
+											/>
+										</div>
+									</div>
+								)}
+							</form.Field>
+							<form.Field name="address">
+								{(field) => (
+									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+										<Label htmlFor="address">{tc("address")}</Label>
 										<Input
-											id="phone"
+											id="address"
 											value={field.state.value}
 											onChange={(e) => field.handleChange(e.target.value)}
 											className="col-span-3"

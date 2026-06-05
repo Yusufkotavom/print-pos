@@ -40,7 +40,7 @@ import { Skeleton } from "@finopenpos/ui/components/skeleton";
 import { TableCell, TableRow } from "@finopenpos/ui/components/table";
 import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
-import { EllipsisVerticalIcon, Loader2Icon } from "lucide-react";
+import { EllipsisVerticalIcon, Loader2Icon, PlusIcon } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 import { z } from "zod/v4";
@@ -58,6 +58,9 @@ export default function Cashier() {
 	const trpc = useTRPC();
 	const { data: transactions = [], isLoading } = useQuery(
 		trpc.transactions.list.queryOptions(),
+	);
+	const { data: transactionCategories = [] } = useQuery(
+		trpc.transactionCategories.list.queryOptions(),
 	);
 	const t = useTranslations("cashier");
 	const tc = useTranslations("common");
@@ -114,6 +117,7 @@ export default function Cashier() {
 	];
 
 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+	const [isCreateOpen, setIsCreateOpen] = useState(false);
 	const [isEditOpen, setIsEditOpen] = useState(false);
 	const [editingId, setEditingId] = useState<number | null>(null);
 	const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -134,14 +138,16 @@ export default function Cashier() {
 		invalidateKeys,
 		successMessage: t("created"),
 		errorMessage: t("createError"),
-		onSuccess: () =>
+		onSuccess: () => {
+			setIsCreateOpen(false);
 			setInlineForm({
 				description: "",
 				category: "",
 				type: "income",
 				amount: 0,
 				status: "completed",
-			}),
+			});
+		},
 	});
 
 	const updateMutation = useCrudMutation({
@@ -182,6 +188,14 @@ export default function Cashier() {
 			});
 		},
 	});
+
+	const inlineCategories = transactionCategories.filter(
+		(category) => category.type === inlineForm.type,
+	);
+
+	const editCategories = transactionCategories.filter(
+		(category) => category.type === editForm.state.values.type,
+	);
 
 	const openEdit = (t: Transaction) => {
 		setEditingId(t.id);
@@ -251,8 +265,16 @@ export default function Cashier() {
 		<>
 			<Card className="w-full">
 				<CardHeader>
-					<CardTitle>{t("title")}</CardTitle>
-					<CardDescription>{t("subtitle")}</CardDescription>
+					<div className="flex items-center justify-between gap-3">
+						<div>
+							<CardTitle>{t("title")}</CardTitle>
+							<CardDescription>{t("subtitle")}</CardDescription>
+						</div>
+						<Button size="sm" onClick={() => setIsCreateOpen(true)}>
+							<PlusIcon className="mr-2 h-4 w-4" />
+							{t("addTransaction")}
+						</Button>
+					</div>
 				</CardHeader>
 				<CardContent>
 					{isLoading ? (
@@ -276,12 +298,13 @@ export default function Cashier() {
 							defaultSort={[{ id: "created_at", desc: true }]}
 							emptyMessage={t("noTransactions")}
 							afterRows={
-								<TableRow className="bg-muted/50">
+								<TableRow id="new-transaction-row" className="bg-muted/50">
 									<TableCell className="font-medium text-muted-foreground">
 										{tc("new")}
 									</TableCell>
 									<TableCell>
 										<Input
+											id="new-transaction-description"
 											value={inlineForm.description}
 											onChange={(e) =>
 												setInlineForm({
@@ -294,17 +317,23 @@ export default function Cashier() {
 										/>
 									</TableCell>
 									<TableCell>
-										<Input
+										<Select
 											value={inlineForm.category}
-											onChange={(e) =>
-												setInlineForm({
-													...inlineForm,
-													category: e.target.value,
-												})
+											onValueChange={(value) =>
+												setInlineForm({ ...inlineForm, category: value })
 											}
-											placeholder={tc("category")}
-											className="h-8"
-										/>
+										>
+											<SelectTrigger className="h-8">
+												<SelectValue placeholder={tc("category")} />
+											</SelectTrigger>
+											<SelectContent>
+												{inlineCategories.map((category) => (
+													<SelectItem key={category.id} value={category.name}>
+														{category.name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
 									</TableCell>
 									<TableCell>
 										<Select
@@ -312,6 +341,7 @@ export default function Cashier() {
 											onValueChange={(value) =>
 												setInlineForm({
 													...inlineForm,
+													category: "",
 													type: value as TransactionType,
 												})
 											}
@@ -390,6 +420,123 @@ export default function Cashier() {
 				</CardContent>
 			</Card>
 
+			<Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>{t("addTransaction")}</DialogTitle>
+					</DialogHeader>
+					<div className="grid gap-4 py-4">
+						<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+							<Label htmlFor="create-desc">{tc("description")}</Label>
+							<Input
+								id="create-desc"
+								value={inlineForm.description}
+								onChange={(e) =>
+									setInlineForm({ ...inlineForm, description: e.target.value })
+								}
+								className="col-span-3"
+							/>
+						</div>
+						<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+							<Label htmlFor="create-type">{tc("type")}</Label>
+							<Select
+								value={inlineForm.type}
+								onValueChange={(value) =>
+									setInlineForm({
+										...inlineForm,
+										category: "",
+										type: value as TransactionType,
+									})
+								}
+							>
+								<SelectTrigger id="create-type" className="col-span-3">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="income">{tc("income")}</SelectItem>
+									<SelectItem value="expense">{tc("expense")}</SelectItem>
+								</SelectContent>
+							</Select>
+						</div>
+						<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+							<Label htmlFor="create-category">{tc("category")}</Label>
+							<Select
+								value={inlineForm.category}
+								onValueChange={(value) =>
+									setInlineForm({ ...inlineForm, category: value })
+								}
+							>
+								<SelectTrigger id="create-category" className="col-span-3">
+									<SelectValue placeholder={tc("category")} />
+								</SelectTrigger>
+								<SelectContent>
+									{inlineCategories.map((category) => (
+										<SelectItem key={category.id} value={category.name}>
+											{category.name}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+						<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+							<Label htmlFor="create-amount">{tc("amount")}</Label>
+							<Input
+								id="create-amount"
+								type="number"
+								min="0.01"
+								step="0.01"
+								value={inlineForm.amount || ""}
+								onChange={(e) =>
+									setInlineForm({
+										...inlineForm,
+										amount: Number(e.target.value),
+									})
+								}
+								className="col-span-3"
+							/>
+						</div>
+						<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+							<Label htmlFor="create-status">{tc("status")}</Label>
+							<Select
+								value={inlineForm.status}
+								onValueChange={(value) =>
+									setInlineForm({
+										...inlineForm,
+										status: value as TransactionStatus,
+									})
+								}
+							>
+								<SelectTrigger id="create-status" className="col-span-3">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="completed">{tc("completed")}</SelectItem>
+									<SelectItem value="pending">{tc("pending")}</SelectItem>
+								</SelectContent>
+							</Select>
+						</div>
+					</div>
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="secondary"
+							onClick={() => setIsCreateOpen(false)}
+						>
+							{tc("cancel")}
+						</Button>
+						<Button
+							onClick={handleAddTransaction}
+							disabled={createMutation.isPending}
+						>
+							{createMutation.isPending && (
+								<Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+							)}
+							{tc("save")}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
 			<Dialog
 				open={isEditOpen}
 				onOpenChange={(open) => {
@@ -434,12 +581,21 @@ export default function Cashier() {
 								{(field) => (
 									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
 										<Label htmlFor="edit-cat">{tc("category")}</Label>
-										<Input
-											id="edit-cat"
+										<Select
 											value={field.state.value}
-											onChange={(e) => field.handleChange(e.target.value)}
-											className="col-span-3"
-										/>
+											onValueChange={(value) => field.handleChange(value)}
+										>
+											<SelectTrigger id="edit-cat" className="col-span-3">
+												<SelectValue placeholder={tc("category")} />
+											</SelectTrigger>
+											<SelectContent>
+												{editCategories.map((category) => (
+													<SelectItem key={category.id} value={category.name}>
+														{category.name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
 									</div>
 								)}
 							</editForm.Field>
@@ -449,9 +605,10 @@ export default function Cashier() {
 										<Label htmlFor="edit-type">{tc("type")}</Label>
 										<Select
 											value={field.state.value}
-											onValueChange={(v) =>
-												field.handleChange(v as TransactionType)
-											}
+											onValueChange={(v) => {
+												field.handleChange(v as TransactionType);
+												editForm.setFieldValue("category", "");
+											}}
 										>
 											<SelectTrigger id="edit-type" className="col-span-3">
 												<SelectValue />

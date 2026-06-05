@@ -8,6 +8,14 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@finopenpos/ui/components/card";
+import { Input } from "@finopenpos/ui/components/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@finopenpos/ui/components/select";
 import { Skeleton } from "@finopenpos/ui/components/skeleton";
 import {
 	Table,
@@ -17,11 +25,12 @@ import {
 	TableHeader,
 	TableRow,
 } from "@finopenpos/ui/components/table";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeftIcon } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeftIcon, PrinterIcon } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { use } from "react";
+import { use, useState } from "react";
+import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
 
@@ -31,14 +40,33 @@ export default function OrderDetailPage({
 	params: Promise<{ id: string }>;
 }) {
 	const { id } = use(params);
-	const orderId = Number.parseInt(id);
+	const orderId = Number.parseInt(id, 10);
 	const trpc = useTRPC();
+	const queryClient = useQueryClient();
 	const { data: order, isLoading } = useQuery(
 		trpc.orders.get.queryOptions({ id: orderId }),
-	) as { data: any; isLoading: boolean };
+	);
+	const { data: paymentMethods = [] } = useQuery(
+		trpc.paymentMethods.list.queryOptions(),
+	);
 	const t = useTranslations("orders");
 	const tc = useTranslations("common");
 	const locale = useLocale();
+	const [paymentMethodId, setPaymentMethodId] = useState<number | null>(null);
+	const [paymentAmount, setPaymentAmount] = useState("");
+	const receivePaymentMutation = useMutation(
+		trpc.orders.receivePayment.mutationOptions({
+			onSuccess: () => {
+				queryClient.invalidateQueries(
+					trpc.orders.get.queryOptions({ id: orderId }),
+				);
+				queryClient.invalidateQueries(trpc.orders.list.queryOptions());
+				setPaymentAmount("");
+				toast.success(t("paymentReceived"));
+			},
+			onError: (err) => toast.error(err.message || t("paymentError")),
+		}),
+	);
 
 	if (isLoading) {
 		return (
@@ -59,36 +87,70 @@ export default function OrderDetailPage({
 		return <div className="text-muted-foreground">{t("orderNotFound")}</div>;
 	}
 
+	const createdAtLabel = order.created_at
+		? new Date(order.created_at).toLocaleString(locale, {
+				dateStyle: "full",
+				timeStyle: "short",
+			})
+		: "—";
+
+	const remainingAmount = Math.max(0, order.total_amount - order.paid_amount);
 	const statusColor =
-		order.status === "completed"
+		order.payment_status === "paid"
 			? "text-green-600"
-			: order.status === "cancelled"
-				? "text-red-600"
-				: "text-yellow-600";
+			: order.payment_status === "partial"
+				? "text-yellow-600"
+				: "text-red-600";
 	const statusLabel =
-		order.status === "completed"
-			? tc("completed")
-			: order.status === "cancelled"
-				? tc("cancelled")
-				: tc("pending");
+		order.payment_status === "paid"
+			? t("paid")
+			: order.payment_status === "partial"
+				? t("partial")
+				: t("unpaid");
+
+	const handleReceivePayment = () => {
+		if (!paymentMethodId) return;
+		const amount = Math.round(Number.parseFloat(paymentAmount) * 100);
+		if (amount <= 0) return;
+		receivePaymentMutation.mutate({
+			id: order.id,
+			paymentMethodId,
+			amount,
+		});
+	};
 
 	return (
-		<div className="max-w-3xl space-y-6">
-			<div className="flex items-center gap-4">
-				<Link href="/admin/orders">
-					<Button variant="ghost" size="icon">
-						<ArrowLeftIcon className="h-4 w-4" />
-					</Button>
-				</Link>
-				<h1 className="font-bold text-2xl">
-					{t("orderDetails")} #{order.id}
-				</h1>
+		<div className="max-w-3xl space-y-6 print:max-w-none">
+			<div className="flex items-center justify-between gap-4 print:hidden">
+				<div className="flex items-center gap-4">
+					<Link href="/admin/orders">
+						<Button variant="ghost" size="icon">
+							<ArrowLeftIcon className="h-4 w-4" />
+						</Button>
+					</Link>
+					<h1 className="font-bold text-2xl">
+						{t("orderDetails")} #{order.id}
+					</h1>
+				</div>
+				<Button variant="outline" onClick={() => window.print()}>
+					<PrinterIcon className="mr-2 h-4 w-4" />
+					{t("printInvoice")}
+				</Button>
 			</div>
 
-			<Card>
-				<CardHeader>
+			<div className="hidden print:block">
+				<h1 className="font-bold text-3xl">
+					{t("invoice")} #{order.id}
+				</h1>
+				<p className="mt-1 text-muted-foreground text-sm">
+					{tc("date")}: {createdAtLabel}
+				</p>
+			</div>
+
+			<Card className="print:border-none print:shadow-none">
+				<CardHeader className="print:px-0">
 					<div className="flex items-center justify-between">
-						<CardTitle>{t("orderDetails")}</CardTitle>
+						<CardTitle>{t("invoiceSummary")}</CardTitle>
 						<span className={`font-semibold ${statusColor}`}>
 							{statusLabel}
 						</span>
@@ -107,16 +169,65 @@ export default function OrderDetailPage({
 							</dd>
 						</div>
 						<div>
-							<dt className="text-muted-foreground">{t("createdAt")}</dt>
-							<dd>
-								{order.created_at
-									? new Date(order.created_at).toLocaleString()
-									: "—"}
+							<dt className="text-muted-foreground">{t("paidAmount")}</dt>
+							<dd className="font-medium">
+								{formatCurrency(order.paid_amount, locale)}
 							</dd>
+						</div>
+						<div>
+							<dt className="text-muted-foreground">{t("remainingAmount")}</dt>
+							<dd className="font-medium">
+								{formatCurrency(remainingAmount, locale)}
+							</dd>
+						</div>
+						<div>
+							<dt className="text-muted-foreground">{t("createdAt")}</dt>
+							<dd>{createdAtLabel}</dd>
 						</div>
 					</dl>
 				</CardContent>
 			</Card>
+
+			{remainingAmount > 0 && (
+				<Card className="print:hidden">
+					<CardHeader>
+						<CardTitle>{t("receivePayment")}</CardTitle>
+					</CardHeader>
+					<CardContent className="flex flex-col gap-3 sm:flex-row">
+						<Select
+							value={paymentMethodId?.toString() ?? ""}
+							onValueChange={(value) => setPaymentMethodId(Number(value))}
+						>
+							<SelectTrigger className="flex-1">
+								<SelectValue placeholder={t("paymentMethod")} />
+							</SelectTrigger>
+							<SelectContent>
+								{paymentMethods.map((method) => (
+									<SelectItem key={method.id} value={method.id.toString()}>
+										{method.name}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+						<Input
+							type="number"
+							step="0.01"
+							min="0"
+							max={(remainingAmount / 100).toString()}
+							placeholder={t("paymentAmount")}
+							value={paymentAmount}
+							onChange={(e) => setPaymentAmount(e.target.value)}
+							className="flex-1"
+						/>
+						<Button
+							onClick={handleReceivePayment}
+							disabled={!paymentMethodId || receivePaymentMutation.isPending}
+						>
+							{t("savePayment")}
+						</Button>
+					</CardContent>
+				</Card>
+			)}
 
 			{order.orderItems && order.orderItems.length > 0 && (
 				<Card>
@@ -128,9 +239,9 @@ export default function OrderDetailPage({
 							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead>{t("product")}</TableHead>
+										<TableHead>{t("item")}</TableHead>
 										<TableHead className="hidden sm:table-cell">
-											{tc("category")}
+											{t("type")}
 										</TableHead>
 										<TableHead>{t("quantity")}</TableHead>
 										<TableHead>{t("unitPrice")}</TableHead>
@@ -138,19 +249,19 @@ export default function OrderDetailPage({
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{order.orderItems.map((item: any) => (
+									{order.orderItems.map((item) => (
 										<TableRow key={item.id}>
 											<TableCell className="font-medium">
-												{item.product?.name ?? `#${item.product_id}`}
+												{item.item_name ||
+													item.product?.name ||
+													`#${item.product_id}`}
 											</TableCell>
 											<TableCell className="hidden sm:table-cell">
-												{item.product?.category ? (
-													<Badge variant="outline">
-														{item.product.category}
-													</Badge>
-												) : (
-													"—"
-												)}
+												<Badge variant="outline">
+													{item.item_type === "service"
+														? t("service")
+														: t("physicalProduct")}
+												</Badge>
 											</TableCell>
 											<TableCell>{item.quantity}</TableCell>
 											<TableCell>

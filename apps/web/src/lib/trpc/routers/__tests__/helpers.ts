@@ -1,6 +1,6 @@
-import type { PgTable } from "drizzle-orm/pg-core";
 import { getTableName } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
+import type { PgTable } from "drizzle-orm/pg-core";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { Pool } from "pg";
 import * as schema from "@/lib/db/schema";
@@ -9,6 +9,7 @@ const TABLES: PgTable[] = [
 	schema.products,
 	schema.productCategories,
 	schema.customers,
+	schema.transactionCategories,
 	schema.paymentMethods,
 	schema.orders,
 	schema.orderItems,
@@ -28,6 +29,11 @@ function tableToDDL(table: PgTable): string {
 		if (col.primary) parts.push("PRIMARY KEY");
 		if (col.notNull && !isSerial) parts.push("NOT NULL");
 		if (col.isUnique) parts.push("UNIQUE");
+		if (col.name === "product_type" || col.name === "item_type")
+			parts.push("DEFAULT 'product'");
+		if (col.name === "item_name") parts.push("DEFAULT ''");
+		if (col.name === "paid_amount") parts.push("DEFAULT 0");
+		if (col.name === "payment_status") parts.push("DEFAULT 'unpaid'");
 		if (col.hasDefault && !isSerial && sqlType.startsWith("timestamp"))
 			parts.push("DEFAULT NOW()");
 

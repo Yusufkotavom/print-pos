@@ -92,7 +92,7 @@ flowchart LR
 | Assinatura XML | xml-crypto |
 | Parsing XML | fast-xml-parser |
 | Runtime | Bun |
-| i18n | next-intl (en + pt-BR) |
+| i18n | next-intl (en + id) |
 | Monorepo | Turborepo, Biome |
 | Modulo Fiscal | @finopenpos/fiscal (pacote standalone) |
 
@@ -146,7 +146,7 @@ FinOpenPOS/
 │       │   │   ├── invoice-repository.ts # Persistencia de notas (Drizzle)
 │       │   │   ├── fiscal-settings-repository.ts
 │       │   │   └── trpc/       # Routers tRPC (negocio + fiscal)
-│       │   ├── messages/       # i18n (en.ts, pt-BR.ts)
+│       │   ├── messages/       # i18n (en.ts, id.ts)
 │       │   └── proxy.ts        # Middleware Next.js 16
 │       ├── scripts/            # DB ensure, ER gen, prepare-prod
 │       └── data/               # Banco PGLite (gitignored)
@@ -381,6 +381,7 @@ erDiagram
         text description
         integer price
         integer in_stock
+        varchar product_type
         varchar user_uid
         varchar category
         timestamp created_at
@@ -389,8 +390,9 @@ erDiagram
     customers {
         serial id PK
         varchar name
-        varchar email UK
+        varchar email
         varchar phone
+        text address
         varchar user_uid
         varchar status
         timestamp created_at
@@ -408,6 +410,8 @@ erDiagram
         integer total_amount
         varchar user_uid
         varchar status
+        integer paid_amount
+        varchar payment_status
         timestamp created_at
     }
 
@@ -415,6 +419,8 @@ erDiagram
         serial id PK
         integer order_id FK
         integer product_id FK
+        varchar item_name
+        varchar item_type
         integer quantity
         integer price
         timestamp created_at

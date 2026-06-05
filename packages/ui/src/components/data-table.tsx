@@ -161,15 +161,21 @@ export function DataTable<T>({
 
 	const columnDefs = useMemo(() => columns.map(mapToColumnDef), [columns]);
 
-	const visibleColumnDefs = useMemo(() => {
-		if (!isMobile) return columnDefs;
-		return columnDefs.filter((_, i) => !columns[i]?.hideOnMobile);
-	}, [columnDefs, columns, isMobile]);
+	const columnVisibility = useMemo(
+		() =>
+			Object.fromEntries(
+				columns.map((column) => [
+					column.key,
+					!(isMobile && column.hideOnMobile),
+				]),
+			),
+		[columns, isMobile],
+	);
 
 	const table = useReactTable({
 		data,
-		columns: visibleColumnDefs,
-		state: { sorting },
+		columns: columnDefs,
+		state: { sorting, columnVisibility },
 		onSortingChange: setSorting,
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
@@ -218,7 +224,7 @@ export function DataTable<T>({
 						{table.getRowModel().rows.length === 0 ? (
 							<TableRow>
 								<TableCell
-									colSpan={visibleColumnDefs.length}
+									colSpan={table.getVisibleLeafColumns().length}
 									className="h-24 text-center"
 								>
 									<div className="flex flex-col items-center gap-2 text-muted-foreground">

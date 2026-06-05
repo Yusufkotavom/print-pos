@@ -51,6 +51,8 @@ import { formatCurrency } from "@/lib/utils";
 type Order = RouterOutputs["orders"]["list"][number];
 type OrderStatus = "completed" | "pending" | "cancelled";
 
+type PaymentStatus = "paid" | "partial" | "unpaid";
+
 export default function OrdersPage() {
 	const trpc = useTRPC();
 	const {
@@ -73,6 +75,12 @@ export default function OrdersPage() {
 		{ label: tc("pending"), value: "pending", variant: "warning" },
 		{ label: tc("cancelled"), value: "cancelled", variant: "danger" },
 	];
+	const paymentFilterOptions: FilterOption[] = [
+		{ label: tc("all"), value: "all" },
+		{ label: t("paid"), value: "paid", variant: "success" },
+		{ label: t("partial"), value: "partial", variant: "warning" },
+		{ label: t("unpaid"), value: "unpaid", variant: "danger" },
+	];
 
 	const tableColumns: Column<Order>[] = [
 		{ key: "id", header: t("orderId"), sortable: true },
@@ -89,6 +97,44 @@ export default function OrdersPage() {
 			sortable: true,
 			accessorFn: (row) => row.total_amount,
 			render: (row) => formatCurrency(row.total_amount, locale),
+		},
+		{
+			key: "payment_status",
+			header: t("paymentStatus"),
+			sortable: true,
+			render: (row) => {
+				const s = row.payment_status as PaymentStatus;
+				const color =
+					s === "paid"
+						? "text-green-600"
+						: s === "partial"
+							? "text-yellow-600"
+							: "text-red-600";
+				const label =
+					s === "paid"
+						? t("paid")
+						: s === "partial"
+							? t("partial")
+							: t("unpaid");
+				return <span className={color}>{label}</span>;
+			},
+		},
+		{
+			key: "paid_amount",
+			header: t("paidAmount"),
+			sortable: true,
+			hideOnMobile: true,
+			accessorFn: (row) => row.paid_amount,
+			render: (row) => formatCurrency(row.paid_amount, locale),
+		},
+		{
+			key: "remaining_amount",
+			header: t("remainingAmount"),
+			sortable: true,
+			hideOnMobile: true,
+			accessorFn: (row) => row.total_amount - row.paid_amount,
+			render: (row) =>
+				formatCurrency(Math.max(0, row.total_amount - row.paid_amount), locale),
 		},
 		{
 			key: "status",
@@ -119,7 +165,12 @@ export default function OrdersPage() {
 			accessorFn: (row) =>
 				row.created_at ? new Date(row.created_at).getTime() : 0,
 			render: (row) =>
-				row.created_at ? new Date(row.created_at).toLocaleDateString() : "",
+				row.created_at
+					? new Date(row.created_at).toLocaleString(locale, {
+							dateStyle: "medium",
+							timeStyle: "short",
+						})
+					: "",
 		},
 	];
 
@@ -141,6 +192,22 @@ export default function OrdersPage() {
 			getValue: (o) => o.status ?? "pending",
 		},
 		{
+			key: "payment_status",
+			header: t("paymentStatus"),
+			getValue: (o) => o.payment_status,
+		},
+		{
+			key: "paid_amount",
+			header: t("paidAmount"),
+			getValue: (o) => (o.paid_amount / 100).toFixed(2),
+		},
+		{
+			key: "remaining_amount",
+			header: t("remainingAmount"),
+			getValue: (o) =>
+				(Math.max(0, o.total_amount - o.paid_amount) / 100).toFixed(2),
+		},
+		{
 			key: "date",
 			header: tc("date"),
 			getValue: (o) =>
@@ -153,6 +220,7 @@ export default function OrdersPage() {
 	const [editingId, setEditingId] = useState<number | null>(null);
 	const [deleteId, setDeleteId] = useState<number | null>(null);
 	const [searchTerm, setSearchTerm] = useState("");
+	const [paymentFilter, setPaymentFilter] = useState("all");
 	const [statusFilter, setStatusFilter] = useState("all");
 	const [editCustomerName, setEditCustomerName] = useState("");
 
@@ -192,13 +260,15 @@ export default function OrdersPage() {
 	const filteredOrders = useMemo(() => {
 		return orders.filter((o) => {
 			if (statusFilter !== "all" && o.status !== statusFilter) return false;
+			if (paymentFilter !== "all" && o.payment_status !== paymentFilter)
+				return false;
 			const q = searchTerm.toLowerCase();
 			return (
 				(o.customer?.name ?? "").toLowerCase().includes(q) ||
 				o.id.toString().includes(searchTerm)
 			);
 		});
-	}, [orders, statusFilter, searchTerm]);
+	}, [orders, statusFilter, paymentFilter, searchTerm]);
 
 	const openEdit = (o: Order) => {
 		setEditingId(o.id);
@@ -297,6 +367,11 @@ export default function OrdersPage() {
 							options: statusFilterOptions,
 							value: statusFilter,
 							onChange: setStatusFilter,
+						},
+						{
+							options: paymentFilterOptions,
+							value: paymentFilter,
+							onChange: setPaymentFilter,
 						},
 					]}
 				/>

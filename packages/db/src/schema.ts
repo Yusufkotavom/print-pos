@@ -24,6 +24,9 @@ export const products = pgTable("products", {
 	description: text("description"),
 	price: integer("price").notNull(),
 	in_stock: integer("in_stock").notNull(),
+	product_type: varchar("product_type", { length: 20 })
+		.default("product")
+		.notNull(),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
 	category: varchar("category", { length: 50 }),
 	created_at: timestamp("created_at").defaultNow(),
@@ -39,8 +42,9 @@ export const productCategories = pgTable("product_categories", {
 export const customers = pgTable("customers", {
 	id: serial("id").primaryKey(),
 	name: varchar("name", { length: 255 }).notNull(),
-	email: varchar("email", { length: 255 }).notNull().unique(),
-	phone: varchar("phone", { length: 20 }),
+	email: varchar("email", { length: 255 }),
+	phone: varchar("phone", { length: 20 }).notNull(),
+	address: text("address"),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
 	status: varchar("status", { length: 20 }),
 	created_at: timestamp("created_at").defaultNow(),
@@ -52,6 +56,10 @@ export const orders = pgTable("orders", {
 	total_amount: integer("total_amount").notNull(),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
 	status: varchar("status", { length: 20 }),
+	paid_amount: integer("paid_amount").default(0).notNull(),
+	payment_status: varchar("payment_status", { length: 20 })
+		.default("unpaid")
+		.notNull(),
 	created_at: timestamp("created_at").defaultNow(),
 });
 
@@ -61,8 +69,18 @@ export const orderItems = pgTable("order_items", {
 	product_id: integer("product_id").references(() => products.id, {
 		onDelete: "set null",
 	}),
+	item_name: varchar("item_name", { length: 255 }).default("").notNull(),
+	item_type: varchar("item_type", { length: 20 }).default("product").notNull(),
 	quantity: integer("quantity").notNull(),
 	price: integer("price").notNull(),
+	created_at: timestamp("created_at").defaultNow(),
+});
+
+export const transactionCategories = pgTable("transaction_categories", {
+	id: serial("id").primaryKey(),
+	name: varchar("name", { length: 100 }).notNull(),
+	type: varchar("type", { length: 20 }).notNull(),
+	user_uid: varchar("user_uid", { length: 255 }).notNull(),
 	created_at: timestamp("created_at").defaultNow(),
 });
 

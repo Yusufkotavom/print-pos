@@ -45,6 +45,7 @@ import type { RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
 
 type Product = RouterOutputs["products"]["list"][number];
+type ProductType = "product" | "service";
 
 export default function Products() {
 	const trpc = useTRPC();
@@ -62,6 +63,7 @@ export default function Products() {
 	const productFormSchema = z.object({
 		name: z.string().min(1, t("nameRequired")),
 		description: z.string(),
+		product_type: z.enum(["product", "service"]),
 		price: z.number().min(0, t("priceMustBePositive")),
 		in_stock: z.number().int().min(0, t("stockMustBeNonNegative")),
 		category: z.string(),
@@ -90,6 +92,13 @@ export default function Products() {
 		},
 		{ key: "description", header: tc("description"), hideOnMobile: true },
 		{
+			key: "product_type",
+			header: t("type"),
+			sortable: true,
+			render: (row) =>
+				row.product_type === "service" ? t("service") : t("physicalProduct"),
+		},
+		{
 			key: "price",
 			header: tc("price"),
 			sortable: true,
@@ -110,6 +119,11 @@ export default function Products() {
 			key: "price",
 			header: tc("price"),
 			getValue: (p) => (p.price / 100).toFixed(2),
+		},
+		{
+			key: "product_type",
+			header: t("type"),
+			getValue: (p) => p.product_type,
 		},
 		{ key: "in_stock", header: t("stock"), getValue: (p) => p.in_stock },
 		{
@@ -174,6 +188,7 @@ export default function Products() {
 			name: "",
 			description: "",
 			price: 0,
+			product_type: "product" as ProductType,
 			in_stock: 0,
 			category: "",
 		},
@@ -181,11 +196,13 @@ export default function Products() {
 			onSubmit: productFormSchema,
 		},
 		onSubmit: ({ value }) => {
+			const inStock = value.product_type === "service" ? 0 : value.in_stock;
 			const payload = {
 				name: value.name,
 				description: value.description || undefined,
 				price: Math.round(value.price * 100),
-				in_stock: value.in_stock,
+				in_stock: inStock,
+				product_type: value.product_type,
 				category: value.category || undefined,
 			};
 
@@ -201,8 +218,17 @@ export default function Products() {
 		return products.filter((p) => {
 			if (categoryFilter !== "all" && p.category !== categoryFilter)
 				return false;
-			if (stockFilter === "in-stock" && p.in_stock === 0) return false;
-			if (stockFilter === "out-of-stock" && p.in_stock > 0) return false;
+			if (
+				stockFilter === "in-stock" &&
+				p.product_type === "product" &&
+				p.in_stock === 0
+			)
+				return false;
+			if (
+				stockFilter === "out-of-stock" &&
+				(p.product_type !== "product" || p.in_stock > 0)
+			)
+				return false;
 			return p.name.toLowerCase().includes(searchTerm.toLowerCase());
 		});
 	}, [products, categoryFilter, stockFilter, searchTerm]);
@@ -219,6 +245,7 @@ export default function Products() {
 		form.setFieldValue("name", p.name);
 		form.setFieldValue("description", p.description ?? "");
 		form.setFieldValue("price", p.price / 100);
+		form.setFieldValue("product_type", p.product_type as ProductType);
 		form.setFieldValue("in_stock", p.in_stock);
 		form.setFieldValue("category", p.category ?? "");
 		setIsDialogOpen(true);
@@ -416,6 +443,31 @@ export default function Products() {
 												}
 											/>
 										</div>
+									</div>
+								)}
+							</form.Field>
+							<form.Field name="product_type">
+								{(field) => (
+									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+										<Label htmlFor="product_type" className="sm:text-right">
+											{t("type")}
+										</Label>
+										<Select
+											value={field.state.value}
+											onValueChange={(value) =>
+												field.handleChange(value as ProductType)
+											}
+										>
+											<SelectTrigger className="col-span-3">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="product">
+													{t("physicalProduct")}
+												</SelectItem>
+												<SelectItem value="service">{t("service")}</SelectItem>
+											</SelectContent>
+										</Select>
 									</div>
 								)}
 							</form.Field>

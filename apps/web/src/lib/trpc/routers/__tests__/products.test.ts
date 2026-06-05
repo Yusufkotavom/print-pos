@@ -73,9 +73,8 @@ describe("products.create", () => {
 		const after = await caller.list();
 		expect(after.length).toBe(before.length + 1);
 		const found = after.find((x) => x.id === p.id);
-		expect(found).toBeDefined();
-		expect(found!.name).toBe("Widget");
-		expect(found!.price).toBe(1500);
+		expect(found?.name).toBe("Widget");
+		expect(found?.price).toBe(1500);
 	});
 
 	it("omitted optional fields are null in DB", async () => {
@@ -84,9 +83,9 @@ describe("products.create", () => {
 		expect(p.category).toBeNull();
 
 		const list = await caller.list();
-		const persisted = list.find((x) => x.id === p.id)!;
-		expect(persisted.description).toBeNull();
-		expect(persisted.category).toBeNull();
+		const persisted = list.find((x) => x.id === p.id);
+		expect(persisted?.description).toBeNull();
+		expect(persisted?.category).toBeNull();
 	});
 
 	it("provided optional fields persist correctly", async () => {
@@ -101,9 +100,9 @@ describe("products.create", () => {
 		expect(p.category).toBe("cat");
 
 		const list = await caller.list();
-		const persisted = list.find((x) => x.id === p.id)!;
-		expect(persisted.description).toBe("desc");
-		expect(persisted.category).toBe("cat");
+		const persisted = list.find((x) => x.id === p.id);
+		expect(persisted?.description).toBe("desc");
+		expect(persisted?.category).toBe("cat");
 	});
 
 	it("rejects name: empty string — no record created", async () => {
@@ -133,10 +132,10 @@ describe("products.update", () => {
 		expect(updated.price).toBe(200);
 
 		const list = await caller.list();
-		const persisted = list.find((x) => x.id === p.id)!;
-		expect(persisted.name).toBe("New");
-		expect(persisted.price).toBe(200);
-		expect(persisted.in_stock).toBe(1); // unchanged field preserved
+		const persisted = list.find((x) => x.id === p.id);
+		expect(persisted?.name).toBe("New");
+		expect(persisted?.price).toBe(200);
+		expect(persisted?.in_stock).toBe(1); // unchanged field preserved
 	});
 
 	it("cross-user update fails and original data is untouched", async () => {
@@ -145,9 +144,9 @@ describe("products.update", () => {
 		await expect(other.update({ id: p.id, name: "Hacked" })).rejects.toThrow();
 
 		const list = await caller.list();
-		const original = list.find((x) => x.id === p.id)!;
-		expect(original.name).toBe("Mine");
-		expect(original.price).toBe(100);
+		const original = list.find((x) => x.id === p.id);
+		expect(original?.name).toBe("Mine");
+		expect(original?.price).toBe(100);
 	});
 });
 

@@ -26,6 +26,7 @@ beforeAll(async () => {
 		.values({
 			name: "Test Customer",
 			email: "order-test@t.com",
+			phone: "0800000000",
 			user_uid: "user-1",
 		})
 		.returning();
@@ -182,16 +183,13 @@ describe("orders.update", () => {
 });
 
 describe("orders.delete", () => {
-	it("deletes order + orderItems — both gone from DB", async () => {
+	it("deletes order, orderItems, and transactions", async () => {
 		const order = await caller.create({
 			customerId,
 			paymentMethodId,
 			products: [{ id: productId, quantity: 1, price: 100 }],
 			total: 100,
 		});
-
-		// Delete associated transaction first to avoid FK violation
-		await db.delete(transactions).where(eq(transactions.order_id, order.id));
 
 		const before = await caller.list();
 		await caller.delete({ id: order.id });
@@ -200,29 +198,17 @@ describe("orders.delete", () => {
 		expect(after.length).toBe(before.length - 1);
 		expect(after.some((o) => o.id === order.id)).toBe(false);
 
-		// Verify orderItems also deleted
 		const items = await db
 			.select()
 			.from(orderItems)
 			.where(eq(orderItems.order_id, order.id));
 		expect(items.length).toBe(0);
-	});
 
-	it("fails with FK error when transaction references order — order survives", async () => {
-		const order = await caller.create({
-			customerId,
-			paymentMethodId,
-			products: [{ id: productId, quantity: 1, price: 100 }],
-			total: 100,
-		});
-
-		const before = await caller.list();
-		await expect(caller.delete({ id: order.id })).rejects.toThrow();
-
-		// Order still exists
-		const after = await caller.list();
-		expect(after.length).toBe(before.length);
-		expect(after.some((o) => o.id === order.id)).toBe(true);
+		const relatedTransactions = await db
+			.select()
+			.from(transactions)
+			.where(eq(transactions.order_id, order.id));
+		expect(relatedTransactions.length).toBe(0);
 	});
 
 	it("is idempotent — deleting non-existent id is no-op", async () => {

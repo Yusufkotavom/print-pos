@@ -9,15 +9,12 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@finopenpos/ui/components/dropdown-menu";
+import { TooltipProvider } from "@finopenpos/ui/components/tooltip";
 import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@finopenpos/ui/components/tooltip";
-import {
+	ChevronDownIcon,
 	CreditCardIcon,
 	DollarSignIcon,
+	FolderTreeIcon,
 	LayoutDashboardIcon,
 	type LucideIcon,
 	MenuIcon,
@@ -42,18 +39,37 @@ interface NavItem {
 	labelKey:
 		| "dashboard"
 		| "cashier"
+		| "transactionList"
 		| "products"
+		| "categories"
 		| "customers"
 		| "orders"
 		| "paymentMethods"
 		| "pos"
 		| "companySettings";
 	icon: LucideIcon;
+	children?: NavItem[];
 }
 
 const navItems: NavItem[] = [
 	{ href: "/admin", labelKey: "dashboard", icon: LayoutDashboardIcon },
-	{ href: "/admin/cashier", labelKey: "cashier", icon: DollarSignIcon },
+	{
+		href: "/admin/cashier",
+		labelKey: "cashier",
+		icon: DollarSignIcon,
+		children: [
+			{
+				href: "/admin/cashier",
+				labelKey: "transactionList",
+				icon: DollarSignIcon,
+			},
+			{
+				href: "/admin/cashier/categories",
+				labelKey: "categories",
+				icon: FolderTreeIcon,
+			},
+		],
+	},
 	{ href: "/admin/products", labelKey: "products", icon: PackageIcon },
 	{ href: "/admin/customers", labelKey: "customers", icon: UsersIcon },
 	{ href: "/admin/orders", labelKey: "orders", icon: ShoppingBagIcon },
@@ -70,14 +86,132 @@ const navItems: NavItem[] = [
 	},
 ];
 
+function flattenNavItems(items: NavItem[]): NavItem[] {
+	return items.flatMap((item) => [
+		item,
+		...(item.children ? flattenNavItems(item.children) : []),
+	]);
+}
+
+function isNavItemActive(pathname: string, item: NavItem) {
+	return (
+		pathname === item.href ||
+		item.children?.some((child) => isNavItemActive(pathname, child)) === true
+	);
+}
+
 export function AdminLayout({ children }: { children: React.ReactNode }) {
 	const pathname = usePathname();
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+	const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+		"/admin/cashier": true,
+	});
 	const t = useTranslations("nav");
 
 	const pageNames: Record<string, string> = Object.fromEntries(
-		navItems.map((item) => [item.href, t(item.labelKey)]),
+		flattenNavItems(navItems).map((item) => [item.href, t(item.labelKey)]),
 	);
+
+	const toggleGroup = (href: string) =>
+		setOpenGroups((current) => ({ ...current, [href]: !current[href] }));
+
+	const renderMobileItem = (item: NavItem, level = 0) => {
+		const active = isNavItemActive(pathname, item);
+		const open = openGroups[item.href] ?? active;
+		const Icon = item.icon;
+
+		if (item.children?.length) {
+			return (
+				<div key={item.href} className="space-y-1">
+					<button
+						type="button"
+						onClick={() => toggleGroup(item.href)}
+						className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+							active
+								? "bg-accent font-medium text-accent-foreground"
+								: "text-muted-foreground hover:bg-muted hover:text-foreground"
+						}`}
+					>
+						<Icon className="h-5 w-5 shrink-0" />
+						<span className="flex-1 text-left">{t(item.labelKey)}</span>
+						<ChevronDownIcon
+							className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}
+						/>
+					</button>
+					{open && (
+						<div className="space-y-1 pl-4">
+							{item.children.map((child) => renderMobileItem(child, level + 1))}
+						</div>
+					)}
+				</div>
+			);
+		}
+
+		return (
+			<Link
+				key={item.href}
+				href={item.href}
+				onClick={() => setMobileMenuOpen(false)}
+				className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+					pathname === item.href
+						? "bg-accent font-medium text-accent-foreground"
+						: "text-muted-foreground hover:bg-muted hover:text-foreground"
+				}`}
+				style={{ paddingLeft: level ? `${level + 0.75}rem` : undefined }}
+			>
+				<Icon className="h-5 w-5 shrink-0" />
+				{t(item.labelKey)}
+			</Link>
+		);
+	};
+
+	const renderDesktopItem = (item: NavItem) => {
+		const active = isNavItemActive(pathname, item);
+		const open = openGroups[item.href] ?? active;
+		const Icon = item.icon;
+
+		if (item.children?.length) {
+			return (
+				<div key={item.href} className="space-y-1">
+					<button
+						type="button"
+						onClick={() => toggleGroup(item.href)}
+						className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+							active
+								? "bg-accent font-medium text-accent-foreground"
+								: "text-muted-foreground hover:bg-muted hover:text-foreground"
+						}`}
+					>
+						<Icon className="h-5 w-5 shrink-0" />
+						<span className="flex-1 text-left">{t(item.labelKey)}</span>
+						<ChevronDownIcon
+							className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}
+						/>
+					</button>
+					{open && (
+						<div className="space-y-1 pl-4">
+							{item.children.map(renderDesktopItem)}
+						</div>
+					)}
+				</div>
+			);
+		}
+
+		return (
+			<Link
+				key={item.href}
+				href={item.href}
+				className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+					pathname === item.href
+						? "bg-accent font-medium text-accent-foreground"
+						: "text-muted-foreground hover:bg-muted hover:text-foreground"
+				}`}
+			>
+				<Icon className="h-5 w-5 shrink-0" />
+				{t(item.labelKey)}
+			</Link>
+		);
+	};
 
 	return (
 		<div className="flex min-h-screen w-full flex-col bg-muted/40">
@@ -158,47 +292,16 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 								<XIcon className="h-5 w-5" />
 							</Button>
 						</div>
-						{navItems.map(({ href, labelKey, icon: Icon }) => (
-							<Link
-								key={href}
-								href={href}
-								onClick={() => setMobileMenuOpen(false)}
-								className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-									pathname === href
-										? "bg-accent font-medium text-accent-foreground"
-										: "text-muted-foreground hover:bg-muted hover:text-foreground"
-								}`}
-							>
-								<Icon className="h-5 w-5 shrink-0" />
-								{t(labelKey)}
-							</Link>
-						))}
+						{navItems.map((item) => renderMobileItem(item))}
 					</nav>
 				</div>
 			)}
 
-			<div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
-				<aside className="fixed inset-y-0 left-0 z-10 mt-[56px] hidden w-14 flex-col border-r bg-background sm:flex">
-					<nav className="flex flex-col items-center gap-4 px-2 sm:py-5">
+			<div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-64">
+				<aside className="fixed inset-y-0 left-0 z-10 mt-[56px] hidden w-60 flex-col border-r bg-background sm:flex">
+					<nav className="flex flex-col gap-2 px-3 py-5">
 						<TooltipProvider>
-							{navItems.map(({ href, labelKey, icon: Icon }) => (
-								<Tooltip key={href}>
-									<TooltipTrigger asChild>
-										<Link
-											href={href}
-											className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-												pathname === href
-													? "bg-accent text-accent-foreground"
-													: "text-muted-foreground"
-											} transition-colors hover:text-foreground md:h-8 md:w-8`}
-										>
-											<Icon className="h-5 w-5" />
-											<span className="sr-only">{t(labelKey)}</span>
-										</Link>
-									</TooltipTrigger>
-									<TooltipContent side="right">{t(labelKey)}</TooltipContent>
-								</Tooltip>
-							))}
+							{navItems.map((item) => renderDesktopItem(item))}
 						</TooltipProvider>
 					</nav>
 				</aside>

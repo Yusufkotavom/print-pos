@@ -21,6 +21,7 @@ erDiagram
         text description
         integer price
         integer in_stock
+        varchar product_type
         varchar user_uid
         varchar category
         timestamp created_at
@@ -29,8 +30,9 @@ erDiagram
     customers {
         serial id PK
         varchar name
-        varchar email UK
+        varchar email
         varchar phone
+        text address
         varchar user_uid
         varchar status
         timestamp created_at
@@ -48,6 +50,8 @@ erDiagram
         integer total_amount
         varchar user_uid
         varchar status
+        integer paid_amount
+        varchar payment_status
         timestamp created_at
     }
 
@@ -55,6 +59,8 @@ erDiagram
         serial id PK
         integer order_id FK
         integer product_id FK
+        varchar item_name
+        varchar item_type
         integer quantity
         integer price
         timestamp created_at

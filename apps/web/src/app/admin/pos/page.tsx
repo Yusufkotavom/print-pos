@@ -9,7 +9,15 @@ import {
 	CardTitle,
 } from "@finopenpos/ui/components/card";
 import { Combobox } from "@finopenpos/ui/components/combobox";
+import {
+	Dialog,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@finopenpos/ui/components/dialog";
 import { Input } from "@finopenpos/ui/components/input";
+import { Label } from "@finopenpos/ui/components/label";
 import { Skeleton } from "@finopenpos/ui/components/skeleton";
 import {
 	Table,
@@ -19,23 +27,29 @@ import {
 	TableHeader,
 	TableRow,
 } from "@finopenpos/ui/components/table";
+import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Loader2Icon,
 	MinusIcon,
+	PlusCircle,
 	PlusIcon,
 	SearchIcon,
 	Trash2Icon,
 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod/v4";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
 
 type Product = RouterOutputs["products"]["list"][number];
-type POSProduct = Pick<Product, "id" | "name" | "price" | "in_stock"> & {
+type POSProduct = Pick<
+	Product,
+	"id" | "name" | "price" | "in_stock" | "product_type"
+> & {
 	category: string;
 	quantity: number;
 };
@@ -55,7 +69,18 @@ export default function POSPage() {
 	const t = useTranslations("pos");
 	const tc = useTranslations("common");
 	const tOrders = useTranslations("orders");
+	const tCustomers = useTranslations("customers");
 	const locale = useLocale();
+
+	const customerFormSchema = z.object({
+		name: z.string().min(1, tCustomers("nameRequired")),
+		email: z.union([
+			z.string().email(tCustomers("invalidEmail")),
+			z.literal(""),
+		]),
+		phone: z.string().min(1, tCustomers("phoneRequired")),
+		address: z.string(),
+	});
 
 	const loading = loadingProducts || loadingCustomers || loadingMethods;
 
@@ -68,8 +93,22 @@ export default function POSPage() {
 				setSelectedProducts([]);
 				setSelectedCustomer(null);
 				setPaymentMethod(null);
+				setPaidAmount("");
 			},
 			onError: (err) => toast.error(err.message || tOrders("createError")),
+		}),
+	);
+
+	const createCustomerMutation = useMutation(
+		trpc.customers.create.mutationOptions({
+			onSuccess: (customer) => {
+				queryClient.invalidateQueries(trpc.customers.list.queryOptions());
+				setSelectedCustomer(customer);
+				setIsCustomerDialogOpen(false);
+				customerForm.reset();
+				toast.success(tCustomers("created"));
+			},
+			onError: (err) => toast.error(err.message || tCustomers("createError")),
 		}),
 	);
 
@@ -78,11 +117,34 @@ export default function POSPage() {
 		id: number;
 		name: string;
 	} | null>(null);
+	const [paidAmount, setPaidAmount] = useState("");
 	const [selectedCustomer, setSelectedCustomer] = useState<{
 		id: number;
 		name: string;
 	} | null>(null);
 	const [productSearch, setProductSearch] = useState("");
+	const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false);
+
+	const customerForm = useForm({
+		defaultValues: {
+			name: "",
+			email: "",
+			phone: "",
+			address: "",
+		},
+		validators: {
+			onSubmit: customerFormSchema,
+		},
+		onSubmit: ({ value }) => {
+			createCustomerMutation.mutate({
+				name: value.name,
+				email: value.email || undefined,
+				phone: value.phone,
+				address: value.address || undefined,
+				status: "active",
+			});
+		},
+	});
 
 	const filteredProducts = useMemo(() => {
 		if (!productSearch.trim()) return products;
@@ -97,12 +159,16 @@ export default function POSPage() {
 	const handleSelectProduct = (productId: number | string) => {
 		const product = products.find((p) => p.id === productId);
 		if (!product) return;
-		if (product.in_stock <= 0) {
+		if (product.product_type === "product" && product.in_stock <= 0) {
 			toast.error(t("outOfStock", { name: product.name }));
 			return;
 		}
 		const existing = selectedProducts.find((p) => p.id === productId);
-		if (existing && existing.quantity >= product.in_stock) {
+		if (
+			product.product_type === "product" &&
+			existing &&
+			existing.quantity >= product.in_stock
+		) {
 			toast.error(
 				t("limitedStock", { count: product.in_stock, name: product.name }),
 			);
@@ -122,6 +188,7 @@ export default function POSPage() {
 					name: product.name,
 					price: product.price,
 					in_stock: product.in_stock,
+					product_type: product.product_type,
 					category: product.category ?? "",
 					quantity: 1,
 				},
@@ -146,7 +213,11 @@ export default function POSPage() {
 				if (p.id !== productId) return p;
 				const newQty = p.quantity + delta;
 				if (newQty <= 0) return p;
-				if (product && newQty > product.in_stock) {
+				if (
+					product &&
+					product.product_type === "product" &&
+					newQty > product.in_stock
+				) {
 					toast.error(t("limitedUnits", { count: product.in_stock }));
 					return p;
 				}
@@ -163,20 +234,27 @@ export default function POSPage() {
 		(sum, product) => sum + product.price * product.quantity,
 		0,
 	);
-
+	const parsedPaidAmount = paidAmount.trim()
+		? Math.round(Number.parseFloat(paidAmount) * 100)
+		: total;
 	const canCreate =
-		selectedProducts.length > 0 && selectedCustomer && paymentMethod;
+		selectedProducts.length > 0 &&
+		selectedCustomer &&
+		paymentMethod &&
+		parsedPaidAmount >= 0 &&
+		parsedPaidAmount <= total;
 
 	const handleCreateOrder = () => {
-		if (!canCreate) return;
+		if (!selectedCustomer || !paymentMethod || !canCreate) return;
 		createOrderMutation.mutate({
-			customerId: selectedCustomer!.id,
-			paymentMethodId: paymentMethod!.id,
+			customerId: selectedCustomer.id,
+			paymentMethodId: paymentMethod.id,
 			products: selectedProducts.map((p) => ({
 				id: p.id,
 				quantity: p.quantity,
 				price: p.price,
 			})),
+			paidAmount: parsedPaidAmount,
 			total,
 		});
 	};
@@ -220,18 +298,45 @@ export default function POSPage() {
 					<CardTitle>{t("saleDetails")}</CardTitle>
 				</CardHeader>
 				<CardContent className="flex flex-col gap-3 sm:flex-row sm:gap-4">
-					<div className="flex-1">
-						<Combobox
-							items={customers}
-							placeholder={t("selectCustomer")}
-							onSelect={handleSelectCustomer}
-						/>
+					<div className="flex flex-1 gap-2">
+						<div className="min-w-0 flex-1">
+							<Combobox
+								items={customers.map((customer) => ({
+									id: customer.id,
+									name: customer.phone
+										? `${customer.name} — ${customer.phone}`
+										: customer.name,
+								}))}
+								placeholder={t("selectCustomer")}
+								onSelect={handleSelectCustomer}
+							/>
+						</div>
+						<Button
+							type="button"
+							variant="outline"
+							size="icon"
+							onClick={() => setIsCustomerDialogOpen(true)}
+						>
+							<PlusCircle className="h-4 w-4" />
+							<span className="sr-only">{tCustomers("addCustomer")}</span>
+						</Button>
 					</div>
 					<div className="flex-1">
 						<Combobox
 							items={paymentMethods}
 							placeholder={t("selectPaymentMethod")}
 							onSelect={handleSelectPaymentMethod}
+						/>
+					</div>
+					<div className="flex-1">
+						<Input
+							type="number"
+							step="0.01"
+							min="0"
+							max={(total / 100).toString()}
+							placeholder={t("paidAmount")}
+							value={paidAmount}
+							onChange={(e) => setPaidAmount(e.target.value)}
 						/>
 					</div>
 				</CardContent>
@@ -253,7 +358,7 @@ export default function POSPage() {
 						<Combobox
 							items={filteredProducts.map((p) => ({
 								id: p.id,
-								name: `${p.name} — ${formatCurrency(p.price, locale)} (${p.in_stock} in stock)`,
+								name: `${p.name} — ${formatCurrency(p.price, locale)} (${p.product_type === "service" ? t("service") : t("stockCount", { count: p.in_stock })})`,
 							}))}
 							placeholder={t("addProduct")}
 							noSelect
@@ -297,12 +402,16 @@ export default function POSPage() {
 												<TableCell className="hidden md:table-cell">
 													<Badge
 														variant={
-															source && source.in_stock > 5
-																? "default"
-																: "destructive"
+															source?.product_type === "service"
+																? "secondary"
+																: source && source.in_stock > 5
+																	? "default"
+																	: "destructive"
 														}
 													>
-														{source?.in_stock ?? 0}
+														{source?.product_type === "service"
+															? t("service")
+															: (source?.in_stock ?? 0)}
 													</Badge>
 												</TableCell>
 												<TableCell>
@@ -329,7 +438,7 @@ export default function POSPage() {
 																handleQuantityChange(product.id, 1)
 															}
 															disabled={
-																source
+																source?.product_type === "product"
 																	? product.quantity >= source.in_stock
 																	: false
 															}
@@ -382,6 +491,120 @@ export default function POSPage() {
 					</div>
 				</CardContent>
 			</Card>
+			<Dialog
+				open={isCustomerDialogOpen}
+				onOpenChange={setIsCustomerDialogOpen}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>{tCustomers("addCustomer")}</DialogTitle>
+					</DialogHeader>
+					<form
+						onSubmit={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							customerForm.handleSubmit();
+						}}
+					>
+						<div className="grid gap-4 py-4">
+							<customerForm.Field name="name">
+								{(field) => (
+									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+										<Label htmlFor="customer-name">{tc("name")}</Label>
+										<div className="col-span-3">
+											<Input
+												id="customer-name"
+												value={field.state.value}
+												onChange={(e) => field.handleChange(e.target.value)}
+												onBlur={field.handleBlur}
+												error={
+													field.state.meta.errors.length > 0
+														? field.state.meta.errors
+																.map((e) => e?.message ?? e)
+																.join(", ")
+														: undefined
+												}
+											/>
+										</div>
+									</div>
+								)}
+							</customerForm.Field>
+							<customerForm.Field name="email">
+								{(field) => (
+									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+										<Label htmlFor="customer-email">{tc("email")}</Label>
+										<div className="col-span-3">
+											<Input
+												id="customer-email"
+												value={field.state.value}
+												onChange={(e) => field.handleChange(e.target.value)}
+												onBlur={field.handleBlur}
+												error={
+													field.state.meta.errors.length > 0
+														? field.state.meta.errors
+																.map((e) => e?.message ?? e)
+																.join(", ")
+														: undefined
+												}
+											/>
+										</div>
+									</div>
+								)}
+							</customerForm.Field>
+							<customerForm.Field name="phone">
+								{(field) => (
+									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+										<Label htmlFor="customer-phone">{tc("phone")}</Label>
+										<div className="col-span-3">
+											<Input
+												id="customer-phone"
+												value={field.state.value}
+												onChange={(e) => field.handleChange(e.target.value)}
+												onBlur={field.handleBlur}
+												error={
+													field.state.meta.errors.length > 0
+														? field.state.meta.errors
+																.map((e) => e?.message ?? e)
+																.join(", ")
+														: undefined
+												}
+											/>
+										</div>
+									</div>
+								)}
+							</customerForm.Field>
+							<customerForm.Field name="address">
+								{(field) => (
+									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+										<Label htmlFor="customer-address">{tc("address")}</Label>
+										<Input
+											id="customer-address"
+											value={field.state.value}
+											onChange={(e) => field.handleChange(e.target.value)}
+											className="col-span-3"
+										/>
+									</div>
+								)}
+							</customerForm.Field>
+						</div>
+						<DialogFooter>
+							<Button
+								type="button"
+								variant="secondary"
+								onClick={() => setIsCustomerDialogOpen(false)}
+							>
+								{tc("cancel")}
+							</Button>
+							<Button type="submit" disabled={createCustomerMutation.isPending}>
+								{createCustomerMutation.isPending && (
+									<Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+								)}
+								{tc("save")}
+							</Button>
+						</DialogFooter>
+					</form>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

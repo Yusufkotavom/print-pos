@@ -4,12 +4,15 @@ import { db } from "@/lib/db";
 import { orderItems, products } from "@/lib/db/schema";
 import { protectedProcedure, router } from "../init";
 
+const productTypeSchema = z.enum(["product", "service"]);
+
 const productSchema = z.object({
 	id: z.number(),
 	name: z.string(),
 	description: z.string().nullable(),
 	price: z.number(),
 	in_stock: z.number(),
+	product_type: z.string(),
 	category: z.string().nullable(),
 	user_uid: z.string(),
 	created_at: z.date().nullable(),
@@ -46,6 +49,7 @@ export const productsRouter = router({
 				description: z.string().optional(),
 				price: z.number().int(),
 				in_stock: z.number().int().min(0),
+				product_type: productTypeSchema.default("product"),
 				category: z.string().optional(),
 			}),
 		)
@@ -74,6 +78,7 @@ export const productsRouter = router({
 				description: z.string().optional(),
 				price: z.number().int().optional(),
 				in_stock: z.number().int().min(0).optional(),
+				product_type: productTypeSchema.optional(),
 				category: z.string().optional(),
 			}),
 		)
