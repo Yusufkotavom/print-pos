@@ -56,6 +56,8 @@ import { z } from "zod/v4";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { FormattedNumberInput } from "@/components/formatted-number-input";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import { useProductImageSync } from "@/hooks/use-product-image-sync";
 import {
 	cacheProductImage,
 	readCachedProductImage,
@@ -81,6 +83,7 @@ export default function Products() {
 	const t = useTranslations("products");
 	const tc = useTranslations("common");
 	const locale = useLocale();
+	const isOnline = useOnlineStatus();
 
 	const productFormSchema = z.object({
 		name: z.string().min(1, t("nameRequired")),
@@ -264,6 +267,23 @@ export default function Products() {
 		errorMessage: t("deleteError"),
 	});
 
+	const {
+		queueCount: imageQueueCount,
+		queueProductImageUpload,
+		syncQueuedProductImages,
+	} = useProductImageSync({
+		updateProductImage: async (payload) => {
+			await updateMutation.mutateAsync(payload);
+		},
+	});
+
+	useEffect(() => {
+		void syncQueuedProductImages();
+		const handleOnline = () => void syncQueuedProductImages();
+		window.addEventListener("online", handleOnline);
+		return () => window.removeEventListener("online", handleOnline);
+	}, [syncQueuedProductImages]);
+
 	const createCategoryMutation = useMutation(
 		trpc.productCategories.create.mutationOptions({
 			onSuccess: () => {
@@ -297,6 +317,14 @@ export default function Products() {
 		onSubmit: async ({ value }) => {
 			const trackStock = value.product_type === "product" && value.track_stock;
 			const inStock = trackStock ? value.in_stock : 0;
+			if (imageFile && editingId !== null && !isOnline) {
+				await cacheProductImage(editingId, imageFile);
+				await queueProductImageUpload(editingId);
+				toast.success("Gambar disimpan lokal dan masuk antrean sinkronisasi.");
+				resetImageState();
+				setIsDialogOpen(false);
+				return;
+			}
 			const uploadedImage = imageFile
 				? await uploadProductImage(imageFile)
 				: imageMeta;
@@ -447,6 +475,24 @@ export default function Products() {
 
 	return (
 		<>
+			{!isOnline && (
+				<div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-blue-900 text-sm">
+					Offline mode. Update gambar produk akan disinkronkan nanti.
+				</div>
+			)}
+			{imageQueueCount > 0 && (
+				<div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 text-sm">
+					<span>{imageQueueCount} gambar produk menunggu sinkronisasi.</span>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => void syncQueuedProductImages()}
+					>
+						Sync now
+					</Button>
+				</div>
+			)}
 			<Card className="flex flex-col gap-4 p-3 sm:gap-6 sm:p-6">
 				<CardHeader className="p-0">
 					<SearchFilter

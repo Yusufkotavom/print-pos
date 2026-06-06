@@ -5,9 +5,13 @@ export type ProductImageUploadResult = {
 	height?: number;
 };
 
-export async function uploadProductImage(file: File) {
+export async function uploadProductImage(file: Blob | File) {
 	const formData = new FormData();
-	formData.append("file", file);
+	formData.append(
+		"file",
+		file,
+		file instanceof File ? file.name : `product-image-${Date.now()}.webp`,
+	);
 	const response = await fetch("/api/products/images", {
 		method: "POST",
 		body: formData,
