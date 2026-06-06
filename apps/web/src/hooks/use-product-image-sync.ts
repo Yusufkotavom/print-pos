@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-	countPendingSyncItems,
 	enqueueSyncItem,
 	getNextRetryAt,
 	listReadySyncQueue,
+	listSyncQueue,
 	readCachedProductImage,
 	removeCachedProductImage,
 	removeSyncQueueItem,
@@ -27,11 +27,20 @@ export function useProductImageSync({
 	}) => Promise<void>;
 }) {
 	const [queueCount, setQueueCount] = useState(0);
+	const [failedCount, setFailedCount] = useState(0);
 
 	const refreshQueueCount = useCallback(async () => {
-		const queue = await listReadySyncQueue();
+		const [readyQueue, fullQueue] = await Promise.all([
+			listReadySyncQueue(),
+			listSyncQueue(),
+		]);
 		setQueueCount(
-			queue.filter((item) => item.entity === "productImage").length,
+			readyQueue.filter((item) => item.entity === "productImage").length,
+		);
+		setFailedCount(
+			fullQueue.filter(
+				(item) => item.entity === "productImage" && item.status === "failed",
+			).length,
 		);
 	}, []);
 
@@ -94,8 +103,12 @@ export function useProductImageSync({
 			}
 		}
 		await refreshQueueCount();
-		await countPendingSyncItems();
 	}, [refreshQueueCount, updateProductImage]);
 
-	return { queueCount, queueProductImageUpload, syncQueuedProductImages };
+	return {
+		queueCount,
+		failedCount,
+		queueProductImageUpload,
+		syncQueuedProductImages,
+	};
 }

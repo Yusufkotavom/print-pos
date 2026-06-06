@@ -24,6 +24,9 @@ export default function ServicesPage() {
 	const { data: services = [], isLoading } = useQuery(
 		trpc.serviceOrders.list.queryOptions(),
 	);
+	const { data: serviceTypes = [] } = useQuery(
+		trpc.serviceTypes.list.queryOptions(),
+	);
 	const t = useTranslations("services");
 	const tc = useTranslations("common");
 	const locale = useLocale();
@@ -43,7 +46,9 @@ export default function ServicesPage() {
 		{
 			key: "service_type",
 			header: t("serviceType"),
-			render: (row) => t(`type_${row.service_type}` as never),
+			render: (row) =>
+				serviceTypes.find((item) => item.value === row.service_type)?.name ??
+				row.service_type,
 		},
 		{
 			key: "status",
@@ -98,12 +103,17 @@ export default function ServicesPage() {
 					<h1 className="font-bold text-2xl">{t("serviceOrders")}</h1>
 					<p className="text-muted-foreground text-sm">{t("subtitle")}</p>
 				</div>
-				<Link href="/admin/services/new">
-					<Button>
-						<PlusIcon className="mr-2 h-4 w-4" />
-						{t("addService")}
-					</Button>
-				</Link>
+				<div className="flex gap-2">
+					<Link href="/admin/services/types">
+						<Button variant="outline">Tipe Service</Button>
+					</Link>
+					<Link href="/admin/services/new">
+						<Button>
+							<PlusIcon className="mr-2 h-4 w-4" />
+							{t("addService")}
+						</Button>
+					</Link>
+				</div>
 			</CardHeader>
 			<CardContent>
 				<div className="mb-4">

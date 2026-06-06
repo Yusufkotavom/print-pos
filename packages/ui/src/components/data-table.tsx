@@ -208,16 +208,17 @@ export function DataTable<T>({
 			)}
 
 			<div className="overflow-x-auto">
-				<Table>
+				<Table className="table-fixed md:table-auto">
 					<TableHeader>
 						{table.getHeaderGroups().map((headerGroup) => (
 							<TableRow key={headerGroup.id}>
 								{headerGroup.headers.map((header) => (
 									<TableHead
 										key={header.id}
-										className={
-											getColumnMeta(header.column.columnDef.meta).className
-										}
+										className={cn(
+											"px-2 py-2 text-xs whitespace-nowrap md:px-4 md:text-sm",
+											getColumnMeta(header.column.columnDef.meta).className,
+										)}
 									>
 										{header.isPlaceholder
 											? null
@@ -262,9 +263,10 @@ export function DataTable<T>({
 									{row.getVisibleCells().map((cell) => (
 										<TableCell
 											key={cell.id}
-											className={
-												getColumnMeta(cell.column.columnDef.meta).className
-											}
+											className={cn(
+												"max-w-[160px] overflow-hidden text-ellipsis px-2 py-2 align-middle text-xs whitespace-nowrap md:max-w-none md:px-4 md:text-sm",
+												getColumnMeta(cell.column.columnDef.meta).className,
+											)}
 										>
 											{flexRender(
 												cell.column.columnDef.cell,

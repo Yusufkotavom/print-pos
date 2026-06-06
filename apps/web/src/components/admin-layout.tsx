@@ -43,8 +43,10 @@ interface NavItem {
 		| "cashier"
 		| "transactionList"
 		| "products"
+		| "productCategories"
 		| "categories"
 		| "customers"
+		| "serviceTypes"
 		| "orders"
 		| "services"
 		| "financialReports"
@@ -79,7 +81,31 @@ const navItems: NavItem[] = [
 			},
 		],
 	},
-	{ href: "/admin/products", labelKey: "products", icon: PackageIcon },
+	{
+		href: "/admin/products",
+		labelKey: "products",
+		icon: PackageIcon,
+		children: [
+			{ href: "/admin/products", labelKey: "products", icon: PackageIcon },
+			{
+				href: "/admin/products/categories",
+				labelKey: "productCategories",
+				icon: FolderTreeIcon,
+			},
+		],
+	},
+	{
+		href: "/admin/services",
+		labelKey: "services",
+		icon: WrenchIcon,
+		children: [
+			{
+				href: "/admin/services/types",
+				labelKey: "serviceTypes",
+				icon: WrenchIcon,
+			},
+		],
+	},
 	{ href: "/admin/customers", labelKey: "customers", icon: UsersIcon },
 	{
 		href: "/admin/reports/financial",
@@ -134,6 +160,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 	const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
 		"/admin/cashier": true,
+		"/admin/products": true,
+		"/admin/services": true,
 		"/admin/reports/financial": true,
 	});
 	const t = useTranslations("nav");

@@ -51,6 +51,14 @@ export const productCategories = pgTable("product_categories", {
 	created_at: timestamp("created_at").defaultNow(),
 });
 
+export const serviceTypes = pgTable("service_types", {
+	id: serial("id").primaryKey(),
+	name: varchar("name", { length: 100 }).notNull(),
+	value: varchar("value", { length: 100 }).notNull(),
+	user_uid: varchar("user_uid", { length: 255 }).notNull(),
+	created_at: timestamp("created_at").defaultNow(),
+});
+
 export const customers = pgTable("customers", {
 	id: serial("id").primaryKey(),
 	name: varchar("name", { length: 255 }).notNull(),

@@ -13,7 +13,7 @@ import {
 export type QueuedServiceOrder = {
 	clientServiceOrderId: string;
 	customerId: number;
-	serviceType: "phone" | "printing" | "other";
+	serviceType: string;
 	estimatedDoneAt?: Date;
 	customerNote?: string;
 	internalNote?: string;

@@ -11,24 +11,23 @@ import { Combobox } from "@finopenpos/ui/components/combobox";
 import {
 	Dialog,
 	DialogContent,
-	DialogFooter,
 	DialogHeader,
 	DialogTitle,
 } from "@finopenpos/ui/components/dialog";
-import { Input } from "@finopenpos/ui/components/input";
-import { Label } from "@finopenpos/ui/components/label";
 import { Skeleton } from "@finopenpos/ui/components/skeleton";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2Icon, PlusCircle } from "lucide-react";
+import { PlusCircle } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod/v4";
 import { POSCartPanel } from "@/components/pos-cart-panel";
+import { POSCustomerDialog } from "@/components/pos-customer-dialog";
 import { POSPaymentFlow } from "@/components/pos-payment-flow";
 import { POSProductCatalog } from "@/components/pos-product-catalog";
 import { POSSuccessDialog } from "@/components/pos-success-dialog";
+import { POSSyncBanner } from "@/components/pos-sync-banner";
 import type {
 	PendingPOSOrder,
 	POSDraft,
@@ -454,24 +453,12 @@ export default function POSPage() {
 
 	return (
 		<div className="mx-auto w-full max-w-7xl pb-24 lg:pb-0">
-			{!isOnline && (
-				<div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-blue-900 text-sm">
-					Offline mode. Data disimpan lokal dulu.
-				</div>
-			)}
-			{queueCount > 0 && (
-				<div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 text-sm">
-					<span>{t("queuedOrdersNotice", { count: queueCount })}</span>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						onClick={() => void syncQueuedOrders()}
-					>
-						Sync now
-					</Button>
-				</div>
-			)}
+			<POSSyncBanner
+				isOnline={isOnline}
+				queueCount={queueCount}
+				onSync={() => void syncQueuedOrders()}
+				queuedLabel={t("queuedOrdersNotice", { count: queueCount })}
+			/>
 			<div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
 				<div className="min-w-0 space-y-4">
 					<div ref={saleDetailsRef}>
@@ -550,120 +537,21 @@ export default function POSPage() {
 					{cartPanel}
 				</DialogContent>
 			</Dialog>
-			<Dialog
+			<POSCustomerDialog
 				open={isCustomerDialogOpen}
 				onOpenChange={setIsCustomerDialogOpen}
-			>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>{tCustomers("addCustomer")}</DialogTitle>
-					</DialogHeader>
-					<form
-						onSubmit={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							customerForm.handleSubmit();
-						}}
-					>
-						<div className="grid gap-4 py-4">
-							<customerForm.Field name="name">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="customer-name">{tc("name")}</Label>
-										<div className="col-span-3">
-											<Input
-												id="customer-name"
-												value={field.state.value}
-												onChange={(e) => field.handleChange(e.target.value)}
-												onBlur={field.handleBlur}
-												error={
-													field.state.meta.errors.length > 0
-														? field.state.meta.errors
-																.map((e) => e?.message ?? e)
-																.join(", ")
-														: undefined
-												}
-											/>
-										</div>
-									</div>
-								)}
-							</customerForm.Field>
-							<customerForm.Field name="email">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="customer-email">{tc("email")}</Label>
-										<div className="col-span-3">
-											<Input
-												id="customer-email"
-												value={field.state.value}
-												onChange={(e) => field.handleChange(e.target.value)}
-												onBlur={field.handleBlur}
-												error={
-													field.state.meta.errors.length > 0
-														? field.state.meta.errors
-																.map((e) => e?.message ?? e)
-																.join(", ")
-														: undefined
-												}
-											/>
-										</div>
-									</div>
-								)}
-							</customerForm.Field>
-							<customerForm.Field name="phone">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="customer-phone">{tc("phone")}</Label>
-										<div className="col-span-3">
-											<Input
-												id="customer-phone"
-												value={field.state.value}
-												onChange={(e) => field.handleChange(e.target.value)}
-												onBlur={field.handleBlur}
-												error={
-													field.state.meta.errors.length > 0
-														? field.state.meta.errors
-																.map((e) => e?.message ?? e)
-																.join(", ")
-														: undefined
-												}
-											/>
-										</div>
-									</div>
-								)}
-							</customerForm.Field>
-							<customerForm.Field name="address">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="customer-address">{tc("address")}</Label>
-										<Input
-											id="customer-address"
-											value={field.state.value}
-											onChange={(e) => field.handleChange(e.target.value)}
-											className="col-span-3"
-										/>
-									</div>
-								)}
-							</customerForm.Field>
-						</div>
-						<DialogFooter>
-							<Button
-								type="button"
-								variant="secondary"
-								onClick={() => setIsCustomerDialogOpen(false)}
-							>
-								{tc("cancel")}
-							</Button>
-							<Button type="submit" disabled={createCustomerMutation.isPending}>
-								{createCustomerMutation.isPending && (
-									<Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
-								)}
-								{tc("save")}
-							</Button>
-						</DialogFooter>
-					</form>
-				</DialogContent>
-			</Dialog>
+				form={customerForm}
+				isPending={createCustomerMutation.isPending}
+				labels={{
+					title: tCustomers("addCustomer"),
+					name: tc("name"),
+					email: tc("email"),
+					phone: tc("phone"),
+					address: tc("address"),
+					cancel: tc("cancel"),
+					save: tc("save"),
+				}}
+			/>
 
 			<POSPaymentFlow
 				pendingOrder={pendingPaymentOrder}

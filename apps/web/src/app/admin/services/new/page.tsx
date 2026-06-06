@@ -87,9 +87,10 @@ export default function NewServicePage() {
 		id: number;
 		name: string;
 	} | null>(null);
-	const [serviceType, setServiceType] = useState<
-		"phone" | "printing" | "other"
-	>("other");
+	const { data: serviceTypes = [] } = useQuery(
+		trpc.serviceTypes.list.queryOptions(),
+	);
+	const [serviceType, setServiceType] = useState("other");
 	const [customerNote, setCustomerNote] = useState("");
 	const [internalNote, setInternalNote] = useState("");
 	const [estimatedDoneAt, setEstimatedDoneAt] = useState<Date | undefined>();
@@ -108,7 +109,7 @@ export default function NewServicePage() {
 				readDraft<{
 					items: POSProductItem[];
 					customer: { id: number; name: string } | null;
-					serviceType: "phone" | "printing" | "other";
+					serviceType: string;
 					customerNote: string;
 					internalNote: string;
 					detailText: string;
@@ -394,25 +395,22 @@ export default function NewServicePage() {
 							<div className="grid gap-4 md:grid-cols-2">
 								<div className="space-y-2">
 									<Label>{t("serviceType")}</Label>
-									<Select
-										value={serviceType}
-										onValueChange={(value) =>
-											setServiceType(value as "phone" | "printing" | "other")
-										}
-									>
+									<Select value={serviceType} onValueChange={setServiceType}>
 										<SelectTrigger>
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent>
-											<SelectItem value="phone">
-												{t("serviceTypePhone")}
-											</SelectItem>
-											<SelectItem value="printing">
-												{t("serviceTypePrinting")}
-											</SelectItem>
-											<SelectItem value="other">
-												{t("serviceTypeOther")}
-											</SelectItem>
+											{serviceTypes.length ? (
+												serviceTypes.map((item) => (
+													<SelectItem key={item.id} value={item.value}>
+														{item.name}
+													</SelectItem>
+												))
+											) : (
+												<SelectItem value="other">
+													{t("serviceTypeOther")}
+												</SelectItem>
+											)}
 										</SelectContent>
 									</Select>
 								</div>

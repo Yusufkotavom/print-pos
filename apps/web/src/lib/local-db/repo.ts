@@ -90,6 +90,25 @@ export async function readCachedPaymentMethods<T>() {
 	return rows.map((row) => row.payload as T);
 }
 
+const MAX_PRODUCT_IMAGE_CACHE_ITEMS = 30;
+const MAX_PRODUCT_IMAGE_CACHE_BYTES = 30 * 1024 * 1024;
+
+export async function cleanupProductImageCache() {
+	const rows = await localDb.productImages.orderBy("updatedAt").toArray();
+	let totalBytes = rows.reduce((sum, row) => sum + row.blob.size, 0);
+	const keysToDelete: string[] = [];
+	while (
+		rows.length - keysToDelete.length > MAX_PRODUCT_IMAGE_CACHE_ITEMS ||
+		totalBytes > MAX_PRODUCT_IMAGE_CACHE_BYTES
+	) {
+		const next = rows.shift();
+		if (!next) break;
+		keysToDelete.push(next.key);
+		totalBytes -= next.blob.size;
+	}
+	if (keysToDelete.length) await localDb.productImages.bulkDelete(keysToDelete);
+}
+
 export async function cacheProductImage(productId: number, blob: Blob) {
 	const key = `product:${productId}`;
 	await localDb.productImages.put({
@@ -99,6 +118,7 @@ export async function cacheProductImage(productId: number, blob: Blob) {
 		url: URL.createObjectURL(blob),
 		updatedAt: new Date().toISOString(),
 	});
+	await cleanupProductImageCache();
 	return key;
 }
 

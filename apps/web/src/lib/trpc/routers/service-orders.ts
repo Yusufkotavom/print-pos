@@ -24,7 +24,7 @@ const serviceStatusSchema = z.enum([
 	"warranty",
 ]);
 
-const serviceTypeSchema = z.enum(["phone", "printing", "other"]);
+const serviceTypeSchema = z.string().min(1).max(100);
 
 const serviceOrderSummarySchema = z.object({
 	id: z.number(),

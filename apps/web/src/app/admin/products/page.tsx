@@ -269,6 +269,7 @@ export default function Products() {
 
 	const {
 		queueCount: imageQueueCount,
+		failedCount: failedImageQueueCount,
 		queueProductImageUpload,
 		syncQueuedProductImages,
 	} = useProductImageSync({
@@ -480,9 +481,12 @@ export default function Products() {
 					Offline mode. Update gambar produk akan disinkronkan nanti.
 				</div>
 			)}
-			{imageQueueCount > 0 && (
+			{(imageQueueCount > 0 || failedImageQueueCount > 0) && (
 				<div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 text-sm">
-					<span>{imageQueueCount} gambar produk menunggu sinkronisasi.</span>
+					<span>
+						{imageQueueCount} gambar siap sinkron, {failedImageQueueCount}{" "}
+						gagal.
+					</span>
 					<Button
 						type="button"
 						variant="outline"
@@ -521,6 +525,14 @@ export default function Products() {
 							>
 								<PackageIcon className="mr-2 h-4 w-4" />
 								{t("addCategory")}
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								asChild
+								className="w-full whitespace-nowrap sm:w-auto"
+							>
+								<Link href="/admin/products/categories">Kelola Kategori</Link>
 							</Button>
 
 							<Button
