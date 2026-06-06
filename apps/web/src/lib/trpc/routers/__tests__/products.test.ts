@@ -51,6 +51,7 @@ describe("products.list", () => {
 		expect(typeof p.name).toBe("string");
 		expect(typeof p.price).toBe("number");
 		expect(typeof p.in_stock).toBe("number");
+		expect(typeof p.track_stock).toBe("boolean");
 		expect(typeof p.user_uid).toBe("string");
 		expect(p.created_at).toBeInstanceOf(Date);
 	});
@@ -81,6 +82,7 @@ describe("products.create", () => {
 		const p = await caller.create({ name: "Bare", price: 100, in_stock: 0 });
 		expect(p.description).toBeNull();
 		expect(p.category).toBeNull();
+		expect(p.track_stock).toBe(true);
 
 		const list = await caller.list();
 		const persisted = list.find((x) => x.id === p.id);

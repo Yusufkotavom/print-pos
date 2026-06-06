@@ -47,6 +47,7 @@ type POSProduct = Pick<
 	| "name"
 	| "price"
 	| "in_stock"
+	| "track_stock"
 	| "product_type"
 	| "wholesale_price"
 	| "wholesale_min_qty"
@@ -225,7 +226,11 @@ export default function POSPage() {
 		(productId: number | string) => {
 			const product = products.find((p) => p.id === productId);
 			if (!product) return;
-			if (product.product_type === "product" && product.in_stock <= 0) {
+			if (
+				product.product_type === "product" &&
+				product.track_stock &&
+				product.in_stock <= 0
+			) {
 				toast.error(t("outOfStock", { name: product.name }));
 				return;
 			}
@@ -234,6 +239,7 @@ export default function POSPage() {
 				const existing = prev.find((p) => p.id === productId);
 				if (
 					product.product_type === "product" &&
+					product.track_stock &&
 					existing &&
 					existing.quantity >= product.in_stock
 				) {
@@ -259,6 +265,7 @@ export default function POSPage() {
 								? product.wholesale_price
 								: product.price,
 						in_stock: product.in_stock,
+						track_stock: product.track_stock,
 						product_type: product.product_type,
 						wholesale_price: product.wholesale_price,
 						wholesale_min_qty: product.wholesale_min_qty,
@@ -286,6 +293,7 @@ export default function POSPage() {
 				if (
 					product &&
 					product.product_type === "product" &&
+					product.track_stock &&
 					newQty > product.in_stock
 				) {
 					toast.error(t("limitedUnits", { count: product.in_stock }));

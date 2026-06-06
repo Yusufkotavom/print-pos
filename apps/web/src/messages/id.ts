@@ -200,6 +200,10 @@ const messages: Messages = {
 		nameRequired: "Nama wajib diisi",
 		priceMustBePositive: "Harga harus positif",
 		stockMustBeNonNegative: "Stok tidak boleh negatif",
+		manageStock: "Kelola stok",
+		manageStockDescription: "Matikan untuk produk tanpa batas stok.",
+		unlimited: "Unlimited",
+		unlimitedStock: "Stok tidak dibatasi",
 	},
 	customers: {
 		addCustomer: "Tambah Pelanggan",
@@ -333,6 +337,7 @@ const messages: Messages = {
 		limitedUnits: "Hanya {count} unit tersedia",
 		service: "Jasa",
 		stockCount: "{count} stok",
+		unlimitedStock: "Stok tidak dibatasi",
 		paidAmount: "Jumlah dibayar (kosong = lunas)",
 	},
 	companySettings: {

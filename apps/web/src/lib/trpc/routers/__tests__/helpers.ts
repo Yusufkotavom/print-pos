@@ -34,6 +34,7 @@ function tableToDDL(table: PgTable): string {
 		if (col.name === "item_name") parts.push("DEFAULT ''");
 		if (col.name === "paid_amount") parts.push("DEFAULT 0");
 		if (col.name === "payment_status") parts.push("DEFAULT 'unpaid'");
+		if (col.name === "track_stock") parts.push("DEFAULT true");
 		if (col.hasDefault && !isSerial && sqlType.startsWith("timestamp"))
 			parts.push("DEFAULT NOW()");
 

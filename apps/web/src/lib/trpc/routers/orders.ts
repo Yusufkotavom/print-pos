@@ -181,6 +181,7 @@ export const ordersRouter = router({
 							name: products.name,
 							cost: products.cost,
 							product_type: products.product_type,
+							track_stock: products.track_stock,
 							user_uid: products.user_uid,
 							in_stock: products.in_stock,
 						})
@@ -193,12 +194,13 @@ export const ordersRouter = router({
 					if (!product) throw new Error("Product not found");
 					if (
 						product.product_type === "product" &&
+						product.track_stock &&
 						product.in_stock < item.quantity
 					) {
 						throw new Error(`${product.name} has insufficient stock`);
 					}
 
-					if (product.product_type === "product") {
+					if (product.product_type === "product" && product.track_stock) {
 						await tx
 							.update(products)
 							.set({ in_stock: sql`${products.in_stock} - ${item.quantity}` })

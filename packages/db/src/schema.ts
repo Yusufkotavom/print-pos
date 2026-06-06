@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+	boolean,
 	integer,
 	pgTable,
 	serial,
@@ -25,6 +26,7 @@ export const products = pgTable("products", {
 	price: integer("price").notNull(),
 	cost: integer("cost").default(0).notNull(),
 	in_stock: integer("in_stock").notNull(),
+	track_stock: boolean("track_stock").default(true).notNull(),
 	wholesale_price: integer("wholesale_price"),
 	wholesale_min_qty: integer("wholesale_min_qty"),
 	product_type: varchar("product_type", { length: 20 })

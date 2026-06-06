@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { createDefaultWorkspace } from "@/lib/onboarding/default-data";
 
 export async function signup(formData: FormData) {
 	const name = formData.get("name") as string;
@@ -11,10 +12,11 @@ export async function signup(formData: FormData) {
 	const password = formData.get("password") as string;
 
 	try {
-		await auth.api.signUpEmail({
+		const result = await auth.api.signUpEmail({
 			body: { email, password, name },
 			headers: await headers(),
 		});
+		await createDefaultWorkspace(result.user.id, name, email);
 	} catch {
 		redirect("/signup?error=signup-failed");
 	}

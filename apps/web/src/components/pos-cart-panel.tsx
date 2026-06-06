@@ -19,6 +19,7 @@ type POSCartItem = {
 	name: string;
 	price: number;
 	in_stock: number;
+	track_stock: boolean;
 	product_type: string;
 	quantity: number;
 };
@@ -26,6 +27,7 @@ type POSCartItem = {
 type ProductSource = {
 	id: number;
 	in_stock: number;
+	track_stock: boolean;
 	product_type: string;
 };
 
@@ -116,7 +118,8 @@ export function POSCartPanel({
 												className="h-8 w-8"
 												onClick={() => onQuantityChange(product.id, 1)}
 												disabled={
-													source?.product_type === "product"
+													source?.product_type === "product" &&
+													source.track_stock
 														? product.quantity >= source.in_stock
 														: false
 												}

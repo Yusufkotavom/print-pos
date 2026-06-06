@@ -80,6 +80,7 @@ export default function Products() {
 		product_type: z.enum(["product", "service"]),
 		price: z.number().min(0, t("priceMustBePositive")),
 		cost: z.number().min(0, t("priceMustBePositive")),
+		track_stock: z.boolean(),
 		in_stock: z.number().int().min(0, t("stockMustBeNonNegative")),
 		category: z.string(),
 		wholesale_price: z.number().min(0).nullable(),
@@ -129,7 +130,12 @@ export default function Products() {
 			accessorFn: (row) => row.cost,
 			render: (row) => formatCurrency(row.cost, locale),
 		},
-		{ key: "in_stock", header: t("stock"), sortable: true },
+		{
+			key: "in_stock",
+			header: t("stock"),
+			sortable: true,
+			render: (row) => (row.track_stock ? row.in_stock : t("unlimited")),
+		},
 	];
 
 	const exportColumns: ExportColumn<Product>[] = [
@@ -156,6 +162,11 @@ export default function Products() {
 			getValue: (p) => p.product_type,
 		},
 		{ key: "in_stock", header: t("stock"), getValue: (p) => p.in_stock },
+		{
+			key: "track_stock",
+			header: t("manageStock"),
+			getValue: (p) => (p.track_stock ? "true" : "false"),
+		},
 		{
 			key: "category",
 			header: tc("category"),
@@ -220,6 +231,7 @@ export default function Products() {
 			price: 0,
 			cost: 0,
 			product_type: "product" as ProductType,
+			track_stock: true,
 			in_stock: 0,
 			category: "",
 			wholesale_price: null as number | null,
@@ -229,13 +241,15 @@ export default function Products() {
 			onSubmit: productFormSchema,
 		},
 		onSubmit: ({ value }) => {
-			const inStock = value.product_type === "service" ? 0 : value.in_stock;
+			const trackStock = value.product_type === "product" && value.track_stock;
+			const inStock = trackStock ? value.in_stock : 0;
 			const payload = {
 				name: value.name,
 				description: value.description || undefined,
 				price: Math.round(value.price * 100),
 				cost: Math.round(value.cost * 100),
 				in_stock: inStock,
+				track_stock: trackStock,
 				product_type: value.product_type,
 				category: value.category || undefined,
 				wholesale_price:
@@ -260,12 +274,13 @@ export default function Products() {
 			if (
 				stockFilter === "in-stock" &&
 				p.product_type === "product" &&
+				p.track_stock &&
 				p.in_stock === 0
 			)
 				return false;
 			if (
 				stockFilter === "out-of-stock" &&
-				(p.product_type !== "product" || p.in_stock > 0)
+				(p.product_type !== "product" || !p.track_stock || p.in_stock > 0)
 			)
 				return false;
 			return p.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -280,6 +295,7 @@ export default function Products() {
 		form.setFieldValue("price", p.price / 100);
 		form.setFieldValue("cost", p.cost / 100);
 		form.setFieldValue("product_type", p.product_type as ProductType);
+		form.setFieldValue("track_stock", p.track_stock);
 		form.setFieldValue("in_stock", p.in_stock);
 		form.setFieldValue("category", p.category ?? "");
 		form.setFieldValue(
@@ -598,32 +614,70 @@ export default function Products() {
 											</div>
 										)}
 									</form.Field>
-									<form.Field name="in_stock">
+									<form.Field name="track_stock">
 										{(field) => (
 											<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-												<Label htmlFor="in_stock" className="sm:text-right">
-													{t("inStock")}
-												</Label>
-												<div className="col-span-3">
-													<FormattedNumberInput
-														id="in_stock"
-														value={field.state.value}
-														onValueChange={(value) =>
-															field.handleChange(value ?? 0)
+												<div className="sm:text-right">
+													<Label htmlFor="track_stock">
+														{t("manageStock")}
+													</Label>
+												</div>
+												<div className="col-span-3 flex items-center gap-2 text-sm">
+													<Input
+														id="track_stock"
+														type="checkbox"
+														checked={field.state.value}
+														onChange={(event) =>
+															field.handleChange(event.target.checked)
 														}
-														onBlur={field.handleBlur}
-														error={
-															field.state.meta.errors.length > 0
-																? field.state.meta.errors
-																		.map((e) => e?.message ?? e)
-																		.join(", ")
-																: undefined
-														}
+														className="h-4 w-4"
 													/>
+													<span>{t("manageStockDescription")}</span>
 												</div>
 											</div>
 										)}
 									</form.Field>
+									<form.Subscribe
+										selector={(state) => ({
+											productType: state.values.product_type,
+											trackStock: state.values.track_stock,
+										})}
+									>
+										{({ productType, trackStock }) =>
+											productType === "product" && trackStock ? (
+												<form.Field name="in_stock">
+													{(field) => (
+														<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+															<Label
+																htmlFor="in_stock"
+																className="sm:text-right"
+															>
+																{t("inStock")}
+															</Label>
+															<div className="col-span-3">
+																<FormattedNumberInput
+																	id="in_stock"
+																	value={field.state.value}
+																	onValueChange={(value) =>
+																		field.handleChange(value ?? 0)
+																	}
+																	onBlur={field.handleBlur}
+																	error={
+																		field.state.meta.errors.length > 0
+																			? field.state.meta.errors
+																					.map((e) => e?.message ?? e)
+																					.join(", ")
+																			: undefined
+																	}
+																/>
+															</div>
+														</div>
+													)}
+												</form.Field>
+											) : null
+										}
+									</form.Subscribe>
+
 									<form.Field name="category">
 										{(field) => (
 											<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">

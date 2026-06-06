@@ -39,6 +39,7 @@ type ParsedProductRow = {
 	price: number;
 	cost: number;
 	in_stock: number;
+	track_stock: boolean;
 	category?: string;
 	product_type?: "product" | "service";
 	description?: string;
@@ -84,7 +85,6 @@ export default function ImportProductsPage() {
 				const rows = results.data as CsvRow[];
 				const parsedData = rows
 					.map((row): ParsedProductRow => {
-						// Helper to find column by multiple possible names (case insensitive)
 						const getVal = (possibleNames: string[]) => {
 							const key = Object.keys(row).find((k) =>
 								possibleNames.some(
@@ -104,6 +104,18 @@ export default function ImportProductsPage() {
 								"jenis",
 							]) || "product"
 						).toLowerCase();
+						const trackStockValue = (
+							getVal([
+								"track_stock",
+								"track stock",
+								"manage_stock",
+								"manage stock",
+							]) || "true"
+						).toLowerCase();
+						const trackStock =
+							productType === "service"
+								? false
+								: ["true", "1", "yes", "ya"].includes(trackStockValue);
 
 						return {
 							id: idValue ? Number.parseInt(idValue, 10) : undefined,
@@ -121,10 +133,13 @@ export default function ImportProductsPage() {
 								getVal(["cost", "hpp", "biaya"]) || "0",
 								10,
 							),
-							in_stock: Number.parseInt(
-								getVal(["stock", "stok", "in_stock", "instock"]) || "0",
-								10,
-							),
+							in_stock: trackStock
+								? Number.parseInt(
+										getVal(["stock", "stok", "in_stock", "instock"]) || "0",
+										10,
+									)
+								: 0,
+							track_stock: trackStock,
 							product_type: productType === "service" ? "service" : "product",
 							category: getVal(["category", "kategori"]) || "",
 						};
@@ -151,9 +166,9 @@ export default function ImportProductsPage() {
 
 	const downloadTemplate = () => {
 		const headers =
-			"name,description,price,cost,in_stock,product_type,category\n";
+			"name,description,price,cost,in_stock,track_stock,product_type,category\n";
 		const example =
-			"Kopi Susu,Kopi susu gula aren,15000,10000,100,product,Minuman\n";
+			"Kopi Susu,Kopi susu gula aren,15000,10000,100,true,product,Minuman\n";
 		const blob = new Blob([headers + example], {
 			type: "text/csv;charset=utf-8;",
 		});
@@ -193,6 +208,11 @@ export default function ImportProductsPage() {
 				key: "in_stock",
 				header: "Stok",
 				getValue: (p: ProductRow) => p.in_stock,
+			},
+			{
+				key: "track_stock",
+				header: "Kelola Stok",
+				getValue: (p: ProductRow) => (p.track_stock ? "true" : "false"),
 			},
 			{
 				key: "product_type",
@@ -324,6 +344,7 @@ export default function ImportProductsPage() {
 											<TableHead className="text-right">Harga</TableHead>
 											<TableHead className="text-right">HPP</TableHead>
 											<TableHead className="text-right">Stok</TableHead>
+											<TableHead>Kelola Stok</TableHead>
 											<TableHead>Kategori</TableHead>
 										</TableRow>
 									</TableHeader>
@@ -343,7 +364,10 @@ export default function ImportProductsPage() {
 													Rp {(row.cost / 100).toLocaleString("id-ID")}
 												</TableCell>
 												<TableCell className="text-right">
-													{row.in_stock}
+													{row.track_stock ? row.in_stock : "Unlimited"}
+												</TableCell>
+												<TableCell>
+													{row.track_stock ? "Ya" : "Tidak"}
 												</TableCell>
 												<TableCell>{row.category}</TableCell>
 											</TableRow>

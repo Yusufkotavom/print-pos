@@ -25,6 +25,7 @@ type ProductItem = {
 	price: number;
 	category?: string | null;
 	in_stock: number;
+	track_stock: boolean;
 	product_type: string;
 };
 
@@ -169,7 +170,9 @@ export function POSProductCatalog({
 											<div className="mt-1 text-muted-foreground text-xs">
 												{product.product_type === "service"
 													? t("service")
-													: t("stockCount", { count: product.in_stock })}
+													: product.track_stock
+														? t("stockCount", { count: product.in_stock })
+														: t("unlimitedStock")}
 											</div>
 										</div>
 									</div>

@@ -197,6 +197,10 @@ const messages = {
 		nameRequired: "Name is required",
 		priceMustBePositive: "Price must be positive",
 		stockMustBeNonNegative: "Stock must be non-negative",
+		manageStock: "Manage stock",
+		manageStockDescription: "Turn off for products with unlimited stock.",
+		unlimited: "Unlimited",
+		unlimitedStock: "Unlimited stock",
 	},
 	customers: {
 		addCustomer: "Add Customer",
@@ -329,6 +333,7 @@ const messages = {
 		limitedUnits: "Only {count} units available",
 		service: "Service",
 		stockCount: "{count} in stock",
+		unlimitedStock: "Unlimited stock",
 		paidAmount: "Paid amount (blank = full payment)",
 	},
 	companySettings: {
