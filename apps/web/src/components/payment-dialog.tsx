@@ -69,7 +69,10 @@ export function PaymentDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-lg">
+			<DialogContent
+				className="max-w-lg"
+				onInteractOutside={(event) => event.preventDefault()}
+			>
 				<DialogHeader>
 					<DialogTitle>{title}</DialogTitle>
 				</DialogHeader>

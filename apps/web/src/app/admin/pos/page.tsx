@@ -1,6 +1,5 @@
 "use client";
 
-import { Badge } from "@finopenpos/ui/components/badge";
 import { Button } from "@finopenpos/ui/components/button";
 import {
 	Card,
@@ -19,30 +18,24 @@ import {
 import { Input } from "@finopenpos/ui/components/input";
 import { Label } from "@finopenpos/ui/components/label";
 import { Skeleton } from "@finopenpos/ui/components/skeleton";
-import { Textarea } from "@finopenpos/ui/components/textarea";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	CheckCircle2Icon,
 	FileTextIcon,
-	LayoutGridIcon,
-	ListIcon,
 	Loader2Icon,
-	MinusIcon,
-	PackageIcon,
 	PlusCircle,
-	PlusIcon,
 	PrinterIcon,
-	SearchIcon,
-	Trash2Icon,
 } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod/v4";
-import { FormattedNumberInput } from "@/components/formatted-number-input";
 import { PaymentDialog } from "@/components/payment-dialog";
+import { POSCartPanel } from "@/components/pos-cart-panel";
+import { POSProductCatalog } from "@/components/pos-product-catalog";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
@@ -73,6 +66,13 @@ type SuccessOrder = {
 	items: POSProduct[];
 	note?: string | null;
 	paymentMethodName?: string;
+};
+
+type PendingPOSOrder = {
+	customer: { id: number; name: string; phone?: string };
+	items: POSProduct[];
+	note: string;
+	total: number;
 };
 
 export default function POSPage() {
@@ -106,7 +106,8 @@ export default function POSPage() {
 	const loading = loadingProducts || loadingCustomers || loadingMethods;
 
 	const [successOrder, setSuccessOrder] = useState<SuccessOrder | null>(null);
-	const [paymentOrder, setPaymentOrder] = useState<SuccessOrder | null>(null);
+	const [pendingPaymentOrder, setPendingPaymentOrder] =
+		useState<PendingPOSOrder | null>(null);
 
 	const { data: companySettings } = useQuery(
 		trpc.companySettings.get.queryOptions(),
@@ -114,53 +115,33 @@ export default function POSPage() {
 
 	const createOrderMutation = useMutation(
 		trpc.orders.create.mutationOptions({
-			onSuccess: (order) => {
+			onSuccess: (order, variables) => {
 				queryClient.invalidateQueries(trpc.orders.list.queryOptions());
 				queryClient.invalidateQueries(trpc.products.list.queryOptions());
-				const createdOrder = {
+				const selectedMethod = paymentMethods.find(
+					(method) => method.id === variables.paymentMethodId,
+				);
+				const draft = pendingPaymentOrder;
+				setSuccessOrder({
 					id: order.id,
 					order_number: order.order_number,
 					created_at: order.created_at,
 					total_amount: order.total_amount,
 					paid_amount: order.paid_amount,
 					payment_status: order.payment_status,
-					customer: selectedCustomer
-						? { ...selectedCustomer, phone: selectedCustomerPhone }
-						: null,
-					items: [...selectedProducts],
-					note: orderNote,
-				};
+					customer: draft?.customer ?? null,
+					items: draft?.items ?? [],
+					note: draft?.note,
+					paymentMethodName: selectedMethod?.name,
+				});
 				toast.success(tOrders("createdSuccessfully"));
-				setPaymentOrder(createdOrder);
+				setPendingPaymentOrder(null);
 				setIsCartOpen(false);
 				setSelectedProducts([]);
 				setSelectedCustomer(null);
 				setOrderNote("");
 			},
 			onError: (err) => toast.error(err.message || tOrders("createError")),
-		}),
-	);
-
-	const receivePaymentMutation = useMutation(
-		trpc.orders.receivePayment.mutationOptions({
-			onSuccess: (order, variables) => {
-				queryClient.invalidateQueries(trpc.orders.list.queryOptions());
-				const selectedMethod = paymentMethods.find(
-					(method) => method.id === variables.paymentMethodId,
-				);
-				setSuccessOrder(
-					paymentOrder
-						? {
-								...paymentOrder,
-								paid_amount: order.paid_amount,
-								payment_status: order.payment_status,
-								paymentMethodName: selectedMethod?.name,
-							}
-						: null,
-				);
-				setPaymentOrder(null);
-			},
-			onError: (err) => toast.error(err.message || tOrders("paymentError")),
 		}),
 	);
 
@@ -184,6 +165,7 @@ export default function POSPage() {
 		name: string;
 	} | null>(null);
 	const [productSearch, setProductSearch] = useState("");
+	const debouncedProductSearch = useDebouncedValue(productSearch, 250);
 	const [selectedCategory, setSelectedCategory] = useState("all");
 	const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 	const [orderNote, setOrderNote] = useState("");
@@ -227,7 +209,7 @@ export default function POSPage() {
 	}, [products]);
 
 	const filteredProducts = useMemo(() => {
-		const q = productSearch.toLowerCase().trim();
+		const q = debouncedProductSearch.toLowerCase().trim();
 		return products.filter((product) => {
 			const matchesCategory =
 				selectedCategory === "all" || product.category === selectedCategory;
@@ -237,54 +219,57 @@ export default function POSPage() {
 				(product.category ?? "").toLowerCase().includes(q);
 			return matchesCategory && matchesSearch;
 		});
-	}, [products, productSearch, selectedCategory]);
+	}, [products, debouncedProductSearch, selectedCategory]);
 
-	const handleSelectProduct = (productId: number | string) => {
-		const product = products.find((p) => p.id === productId);
-		if (!product) return;
-		if (product.product_type === "product" && product.in_stock <= 0) {
-			toast.error(t("outOfStock", { name: product.name }));
-			return;
-		}
-		const existing = selectedProducts.find((p) => p.id === productId);
-		if (
-			product.product_type === "product" &&
-			existing &&
-			existing.quantity >= product.in_stock
-		) {
-			toast.error(
-				t("limitedStock", { count: product.in_stock, name: product.name }),
-			);
-			return;
-		}
-		if (existing) {
-			setSelectedProducts(
-				selectedProducts.map((p) =>
-					p.id === productId ? { ...p, quantity: p.quantity + 1 } : p,
-				),
-			);
-		} else {
-			setSelectedProducts([
-				...selectedProducts,
-				{
-					id: product.id,
-					name: product.name,
-					price:
-						product.wholesale_price != null &&
-						product.wholesale_min_qty != null &&
-						1 >= product.wholesale_min_qty
-							? product.wholesale_price
-							: product.price,
-					in_stock: product.in_stock,
-					product_type: product.product_type,
-					wholesale_price: product.wholesale_price,
-					wholesale_min_qty: product.wholesale_min_qty,
-					category: product.category ?? "",
-					quantity: 1,
-				},
-			]);
-		}
-	};
+	const handleSelectProduct = useCallback(
+		(productId: number | string) => {
+			const product = products.find((p) => p.id === productId);
+			if (!product) return;
+			if (product.product_type === "product" && product.in_stock <= 0) {
+				toast.error(t("outOfStock", { name: product.name }));
+				return;
+			}
+
+			setSelectedProducts((prev) => {
+				const existing = prev.find((p) => p.id === productId);
+				if (
+					product.product_type === "product" &&
+					existing &&
+					existing.quantity >= product.in_stock
+				) {
+					toast.error(
+						t("limitedStock", { count: product.in_stock, name: product.name }),
+					);
+					return prev;
+				}
+				if (existing) {
+					return prev.map((p) =>
+						p.id === productId ? { ...p, quantity: p.quantity + 1 } : p,
+					);
+				}
+				return [
+					...prev,
+					{
+						id: product.id,
+						name: product.name,
+						price:
+							product.wholesale_price != null &&
+							product.wholesale_min_qty != null &&
+							1 >= product.wholesale_min_qty
+								? product.wholesale_price
+								: product.price,
+						in_stock: product.in_stock,
+						product_type: product.product_type,
+						wholesale_price: product.wholesale_price,
+						wholesale_min_qty: product.wholesale_min_qty,
+						category: product.category ?? "",
+						quantity: 1,
+					},
+				];
+			});
+		},
+		[products, t],
+	);
 
 	const handleSelectCustomer = (customerId: number | string) => {
 		const customer = customers.find((c) => c.id === customerId);
@@ -306,7 +291,6 @@ export default function POSPage() {
 					toast.error(t("limitedUnits", { count: product.in_stock }));
 					return p;
 				}
-				// Auto-apply wholesale price based on qty
 				let newPrice = p.price;
 				const source = products.find((pr) => pr.id === p.id);
 				if (
@@ -344,17 +328,13 @@ export default function POSPage() {
 
 	const handleCreateOrder = () => {
 		if (!selectedCustomer || !canCreate) return;
-		createOrderMutation.mutate({
-			customerId: selectedCustomer.id,
-			products: selectedProducts.map((p) => ({
-				id: p.id,
-				quantity: p.quantity,
-				price: p.price,
-			})),
+		setPendingPaymentOrder({
+			customer: { ...selectedCustomer, phone: selectedCustomerPhone },
+			items: [...selectedProducts],
 			note: orderNote,
-			paidAmount: 0,
 			total,
 		});
+		setIsCartOpen(false);
 	};
 
 	if (loading) {
@@ -390,117 +370,20 @@ export default function POSPage() {
 	}
 
 	const cartPanel = (
-		<Card className="h-fit lg:sticky lg:top-4">
-			<CardHeader>
-				<CardTitle>{t("createOrder")}</CardTitle>
-			</CardHeader>
-			<CardContent className="space-y-4">
-				{selectedProducts.length === 0 ? (
-					<div className="flex h-32 items-center justify-center text-muted-foreground text-sm">
-						{t("selectProducts")}
-					</div>
-				) : (
-					<div className="space-y-3">
-						{selectedProducts.map((product) => {
-							const source = products.find((p) => p.id === product.id);
-							return (
-								<div key={product.id} className="rounded-lg border p-3">
-									<div className="flex items-start justify-between gap-3">
-										<div className="min-w-0">
-											<div className="truncate font-medium text-sm">
-												{product.name}
-											</div>
-											<div className="text-muted-foreground text-xs">
-												{formatCurrency(product.price, locale)}
-											</div>
-										</div>
-										<Button
-											variant="ghost"
-											size="icon"
-											className="h-7 w-7 shrink-0"
-											onClick={() => handleRemoveProduct(product.id)}
-										>
-											<Trash2Icon className="h-4 w-4" />
-											<span className="sr-only">{tc("remove")}</span>
-										</Button>
-									</div>
-									<div className="mt-3 flex items-center justify-between gap-3">
-										<div className="flex items-center gap-1">
-											<Button
-												size="icon"
-												variant="outline"
-												className="h-8 w-8"
-												onClick={() => handleQuantityChange(product.id, -1)}
-												disabled={product.quantity <= 1}
-											>
-												<MinusIcon className="h-3 w-3" />
-											</Button>
-											<span className="w-8 text-center font-medium tabular-nums">
-												{product.quantity}
-											</span>
-											<Button
-												size="icon"
-												variant="outline"
-												className="h-8 w-8"
-												onClick={() => handleQuantityChange(product.id, 1)}
-												disabled={
-													source?.product_type === "product"
-														? product.quantity >= source.in_stock
-														: false
-												}
-											>
-												<PlusIcon className="h-3 w-3" />
-											</Button>
-										</div>
-										<div className="font-semibold text-sm">
-											{formatCurrency(product.quantity * product.price, locale)}
-										</div>
-									</div>
-									<div className="mt-3 flex items-center gap-2">
-										<span className="text-muted-foreground text-xs">Rp</span>
-										<FormattedNumberInput
-											className="h-8"
-											value={product.price / 100}
-											onValueChange={(value) =>
-												handlePriceChange(product.id, (value ?? 0) * 100)
-											}
-										/>
-									</div>
-								</div>
-							);
-						})}
-					</div>
-				)}
-				{selectedProducts.length > 0 && (
-					<div className="space-y-2">
-						<Label htmlFor="order-note">{tc("description")}</Label>
-						<Textarea
-							id="order-note"
-							value={orderNote}
-							onChange={(event) => setOrderNote(event.target.value)}
-							rows={4}
-						/>
-					</div>
-				)}
-				<div className="border-t pt-4">
-					<div className="mb-3 flex items-center justify-between">
-						<span className="font-medium">{tc("total")}</span>
-						<strong className="text-xl">{formatCurrency(total, locale)}</strong>
-					</div>
-					<Button
-						onClick={handleCreateOrder}
-						disabled={!canCreate || createOrderMutation.isPending}
-						size="lg"
-						className="w-full"
-					>
-						{createOrderMutation.isPending && (
-							<Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
-						)}
-						{t("createOrder")}
-					</Button>
-				</div>
-			</CardContent>
-		</Card>
+		<POSCartPanel
+			items={selectedProducts}
+			products={products}
+			note={orderNote}
+			total={total}
+			locale={locale}
+			isPending={createOrderMutation.isPending}
+			canCreate={Boolean(canCreate)}
+			onNoteChange={setOrderNote}
+			onQuantityChange={handleQuantityChange}
+			onPriceChange={handlePriceChange}
+			onRemoveProduct={handleRemoveProduct}
+			onCreateOrder={handleCreateOrder}
+		/>
 	);
 
 	return (
@@ -539,132 +422,19 @@ export default function POSPage() {
 						</CardContent>
 					</Card>
 
-					<Card>
-						<CardHeader>
-							<CardTitle>{t("products")}</CardTitle>
-							<div className="!mt-4 space-y-3">
-								<div className="flex min-w-0 gap-2">
-									<div className="relative min-w-0 flex-1">
-										<SearchIcon className="absolute top-2.5 left-2.5 h-4 w-4 text-muted-foreground" />
-										<Input
-											type="text"
-											placeholder={t("searchPlaceholder")}
-											value={productSearch}
-											onChange={(e) => setProductSearch(e.target.value)}
-											className="pl-8"
-										/>
-									</div>
-									<div className="flex w-fit items-center gap-1 rounded-lg border p-1">
-										<Button
-											type="button"
-											variant={viewMode === "grid" ? "default" : "ghost"}
-											size="icon"
-											className="h-8 w-8"
-											onClick={() => setViewMode("grid")}
-										>
-											<LayoutGridIcon className="h-4 w-4" />
-										</Button>
-										<Button
-											type="button"
-											variant={viewMode === "list" ? "default" : "ghost"}
-											size="icon"
-											className="h-8 w-8"
-											onClick={() => setViewMode("list")}
-										>
-											<ListIcon className="h-4 w-4" />
-										</Button>
-									</div>
-								</div>
-								<div className="max-w-full overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-									<div className="inline-flex min-w-max gap-2">
-										<Button
-											type="button"
-											variant={
-												selectedCategory === "all" ? "default" : "outline"
-											}
-											size="sm"
-											onClick={() => setSelectedCategory("all")}
-											className="shrink-0"
-										>
-											{tc("all")}
-										</Button>
-										{productCategories.map((category) => (
-											<Button
-												key={category}
-												type="button"
-												variant={
-													selectedCategory === category ? "default" : "outline"
-												}
-												size="sm"
-												onClick={() => setSelectedCategory(category)}
-												className="shrink-0"
-											>
-												{category}
-											</Button>
-										))}
-									</div>
-								</div>
-							</div>
-						</CardHeader>
-						<CardContent>
-							{filteredProducts.length === 0 ? (
-								<div className="flex h-32 items-center justify-center text-muted-foreground text-sm">
-									{t("selectProducts")}
-								</div>
-							) : (
-								<div
-									className={`grid gap-3 ${viewMode === "grid" ? "grid-cols-2" : "grid-cols-1"}`}
-								>
-									{filteredProducts.map((product) => {
-										const selectedProduct = selectedProducts.find(
-											(p) => p.id === product.id,
-										);
-										return (
-											<button
-												key={product.id}
-												type="button"
-												onClick={() => handleSelectProduct(product.id)}
-												className={`rounded-xl border p-3 text-left transition-colors hover:border-primary hover:bg-primary/5 ${viewMode === "grid" ? "min-h-36" : ""}`}
-											>
-												<div
-													className={`gap-3 ${viewMode === "grid" ? "flex flex-col" : "flex items-center"}`}
-												>
-													<div
-														className={`flex shrink-0 items-center justify-center rounded-lg bg-muted ${viewMode === "grid" ? "h-20 w-full" : "h-12 w-12"}`}
-													>
-														<PackageIcon className="h-5 w-5 text-muted-foreground md:h-6 md:w-6" />
-													</div>
-													<div className="min-w-0 flex-1">
-														<div className="flex items-start justify-between gap-2">
-															<div className="min-w-0">
-																<div className="break-words font-semibold text-sm leading-tight md:text-base">
-																	{product.name}
-																</div>
-																<div className="text-muted-foreground text-xs">
-																	{product.category ?? "—"}
-																</div>
-															</div>
-															{selectedProduct && (
-																<Badge>{selectedProduct.quantity}</Badge>
-															)}
-														</div>
-														<div className="mt-2 font-bold text-base md:text-lg">
-															{formatCurrency(product.price, locale)}
-														</div>
-														<div className="mt-1 text-muted-foreground text-xs">
-															{product.product_type === "service"
-																? t("service")
-																: t("stockCount", { count: product.in_stock })}
-														</div>
-													</div>
-												</div>
-											</button>
-										);
-									})}
-								</div>
-							)}
-						</CardContent>
-					</Card>
+					<POSProductCatalog
+						products={filteredProducts}
+						selectedProducts={selectedProducts}
+						selectedCategory={selectedCategory}
+						productCategories={productCategories}
+						productSearch={productSearch}
+						viewMode={viewMode}
+						locale={locale}
+						onSearchChange={setProductSearch}
+						onCategoryChange={setSelectedCategory}
+						onViewModeChange={setViewMode}
+						onSelectProduct={handleSelectProduct}
+					/>
 				</div>
 
 				<div className="hidden lg:block">{cartPanel}</div>
@@ -810,9 +580,9 @@ export default function POSPage() {
 			</Dialog>
 
 			<PaymentDialog
-				open={!!paymentOrder}
+				open={!!pendingPaymentOrder}
 				onOpenChange={(open) => {
-					if (!open) setPaymentOrder(null);
+					if (!open) setPendingPaymentOrder(null);
 				}}
 				title={tOrders("receivePayment")}
 				totalLabel={tc("total")}
@@ -820,21 +590,24 @@ export default function POSPage() {
 				paymentMethodLabel={tOrders("paymentMethod")}
 				submitLabel={tOrders("savePayment")}
 				cancelLabel={tc("cancel")}
-				totalAmount={paymentOrder?.total_amount ?? 0}
-				maxAmount={
-					paymentOrder
-						? paymentOrder.total_amount - paymentOrder.paid_amount
-						: 0
-				}
+				totalAmount={pendingPaymentOrder?.total ?? 0}
+				maxAmount={pendingPaymentOrder?.total ?? 0}
 				locale={locale}
 				paymentMethods={paymentMethods}
-				isPending={receivePaymentMutation.isPending}
+				isPending={createOrderMutation.isPending}
 				onSubmit={({ paymentMethodId, amount }) => {
-					if (!paymentOrder) return;
-					receivePaymentMutation.mutate({
-						id: paymentOrder.id,
+					if (!pendingPaymentOrder) return;
+					createOrderMutation.mutate({
+						customerId: pendingPaymentOrder.customer.id,
+						products: pendingPaymentOrder.items.map((item) => ({
+							id: item.id,
+							quantity: item.quantity,
+							price: item.price,
+						})),
+						note: pendingPaymentOrder.note,
 						paymentMethodId,
-						amount,
+						paidAmount: amount,
+						total: pendingPaymentOrder.total,
 					});
 				}}
 			/>
