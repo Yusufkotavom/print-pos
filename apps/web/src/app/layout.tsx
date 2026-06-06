@@ -28,7 +28,7 @@ export default async function RootLayout({
 				<NextIntlClientProvider locale={locale} messages={messages}>
 					<TRPCReactProvider>
 						<main>{children}</main>
-						<Toaster richColors position="bottom-right" />
+						<Toaster richColors position="top-right" />
 						<CookieConsent />
 					</TRPCReactProvider>
 				</NextIntlClientProvider>

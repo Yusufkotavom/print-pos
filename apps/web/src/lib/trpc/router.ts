@@ -9,6 +9,7 @@ import { ordersRouter } from "./routers/orders";
 import { paymentMethodsRouter } from "./routers/payment-methods";
 import { productCategoriesRouter } from "./routers/product-categories";
 import { productsRouter } from "./routers/products";
+import { serviceOrdersRouter } from "./routers/service-orders";
 import { transactionCategoriesRouter } from "./routers/transaction-categories";
 import { transactionsRouter } from "./routers/transactions";
 
@@ -17,6 +18,7 @@ export const appRouter = router({
 	productCategories: productCategoriesRouter,
 	customers: customersRouter,
 	orders: ordersRouter,
+	serviceOrders: serviceOrdersRouter,
 	transactions: transactionsRouter,
 	transactionCategories: transactionCategoriesRouter,
 	paymentMethods: paymentMethodsRouter,

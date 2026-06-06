@@ -2,6 +2,7 @@ import { relations } from "drizzle-orm";
 import {
 	boolean,
 	integer,
+	jsonb,
 	pgTable,
 	serial,
 	text,
@@ -58,6 +59,7 @@ export const customers = pgTable("customers", {
 export const orders = pgTable("orders", {
 	id: serial("id").primaryKey(),
 	order_number: varchar("order_number", { length: 32 }),
+	client_order_id: varchar("client_order_id", { length: 64 }).unique(),
 	customer_id: integer("customer_id").references(() => customers.id),
 	total_amount: integer("total_amount").notNull(),
 	note: text("note"),
@@ -77,6 +79,50 @@ export const orderItems = pgTable("order_items", {
 		onDelete: "set null",
 	}),
 	item_name: varchar("item_name", { length: 255 }).default("").notNull(),
+	item_type: varchar("item_type", { length: 20 }).default("product").notNull(),
+	quantity: integer("quantity").notNull(),
+	price: integer("price").notNull(),
+	cost: integer("cost").default(0).notNull(),
+	note: text("note"),
+	created_at: timestamp("created_at").defaultNow(),
+});
+
+export const serviceOrders = pgTable("service_orders", {
+	id: serial("id").primaryKey(),
+	service_number: varchar("service_number", { length: 32 }),
+	customer_id: integer("customer_id").references(() => customers.id),
+	service_type: varchar("service_type", { length: 32 })
+		.notNull()
+		.default("other"),
+	status: varchar("status", { length: 32 }).notNull().default("new"),
+	estimated_done_at: timestamp("estimated_done_at"),
+	customer_note: text("customer_note"),
+	internal_note: text("internal_note"),
+	details_json: jsonb("details_json"),
+	total_amount: integer("total_amount").notNull().default(0),
+	paid_amount: integer("paid_amount").notNull().default(0),
+	payment_status: varchar("payment_status", { length: 20 })
+		.default("unpaid")
+		.notNull(),
+	user_uid: varchar("user_uid", { length: 255 }).notNull(),
+	created_at: timestamp("created_at").defaultNow(),
+	warranty_unit: varchar("warranty_unit", { length: 20 })
+		.default("none")
+		.notNull(),
+	warranty_value: integer("warranty_value"),
+	completed_at: timestamp("completed_at"),
+});
+
+export const serviceOrderItems = pgTable("service_order_items", {
+	id: serial("id").primaryKey(),
+	service_order_id: integer("service_order_id").references(
+		() => serviceOrders.id,
+	),
+	product_id: integer("product_id").references(() => products.id, {
+		onDelete: "set null",
+	}),
+	line_type: varchar("line_type", { length: 20 }).notNull().default("service"),
+	item_name: varchar("item_name", { length: 255 }).notNull(),
 	item_type: varchar("item_type", { length: 20 }).default("product").notNull(),
 	quantity: integer("quantity").notNull(),
 	price: integer("price").notNull(),
@@ -105,6 +151,9 @@ export const transactions = pgTable("transactions", {
 	transaction_number: varchar("transaction_number", { length: 32 }),
 	description: text("description"),
 	order_id: integer("order_id").references(() => orders.id),
+	service_order_id: integer("service_order_id").references(
+		() => serviceOrders.id,
+	),
 	payment_method_id: integer("payment_method_id").references(
 		() => paymentMethods.id,
 	),
@@ -139,11 +188,40 @@ export const companySettings = pgTable("company_settings", {
 	receipt_header: text("receipt_header"),
 	receipt_footer: text("receipt_footer"),
 	invoice_terms: text("invoice_terms"),
+	service_terms: text("service_terms"),
 	invoice_template: varchar("invoice_template", { length: 20 }).default(
 		"standard",
 	),
 	whatsapp_template: text("whatsapp_template").default(
 		"Halo! Pesanan Anda {order_number} telah berhasil diproses. Anda bisa mengecek invoice melalui tautan berikut: {invoice_url} \nTerima kasih!",
+	),
+	whatsapp_product_information_template: text(
+		"whatsapp_product_information_template",
+	).default("Produk/Item:\n{product_information}"),
+	whatsapp_service_in_progress_template: text(
+		"whatsapp_service_in_progress_template",
+	).default(
+		"Halo {customer_name}, service {service_number} sedang dikerjakan.\n\n{product_information}",
+	),
+	whatsapp_service_waiting_template: text(
+		"whatsapp_service_waiting_template",
+	).default(
+		"Halo {customer_name}, service {service_number} sedang menunggu proses lanjutan.\n\n{product_information}",
+	),
+	whatsapp_service_ready_template: text(
+		"whatsapp_service_ready_template",
+	).default(
+		"Halo {customer_name}, service {service_number} sudah siap diambil.\n\n{product_information}",
+	),
+	whatsapp_service_done_template: text(
+		"whatsapp_service_done_template",
+	).default(
+		"Halo {customer_name}, service {service_number} telah selesai.\n\n{product_information}",
+	),
+	whatsapp_service_warranty_template: text(
+		"whatsapp_service_warranty_template",
+	).default(
+		"Halo {customer_name}, service {service_number} masuk status garansi.\n\n{product_information}",
 	),
 	created_at: timestamp("created_at").defaultNow().notNull(),
 	updated_at: timestamp("updated_at").defaultNow(),
@@ -168,10 +246,40 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
 	}),
 }));
 
+export const serviceOrdersRelations = relations(
+	serviceOrders,
+	({ one, many }) => ({
+		customer: one(customers, {
+			fields: [serviceOrders.customer_id],
+			references: [customers.id],
+		}),
+		items: many(serviceOrderItems),
+		transactions: many(transactions),
+	}),
+);
+
+export const serviceOrderItemsRelations = relations(
+	serviceOrderItems,
+	({ one }) => ({
+		serviceOrder: one(serviceOrders, {
+			fields: [serviceOrderItems.service_order_id],
+			references: [serviceOrders.id],
+		}),
+		product: one(products, {
+			fields: [serviceOrderItems.product_id],
+			references: [products.id],
+		}),
+	}),
+);
+
 export const transactionsRelations = relations(transactions, ({ one }) => ({
 	order: one(orders, {
 		fields: [transactions.order_id],
 		references: [orders.id],
+	}),
+	serviceOrder: one(serviceOrders, {
+		fields: [transactions.service_order_id],
+		references: [serviceOrders.id],
 	}),
 	paymentMethod: one(paymentMethods, {
 		fields: [transactions.payment_method_id],
@@ -181,10 +289,12 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
 
 export const customersRelations = relations(customers, ({ many }) => ({
 	orders: many(orders),
+	serviceOrders: many(serviceOrders),
 }));
 
 export const productsRelations = relations(products, ({ many }) => ({
 	orderItems: many(orderItems),
+	serviceOrderItems: many(serviceOrderItems),
 }));
 
 export const paymentMethodsRelations = relations(

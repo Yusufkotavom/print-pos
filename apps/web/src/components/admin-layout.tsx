@@ -25,6 +25,7 @@ import {
 	ShoppingBagIcon,
 	ShoppingCartIcon,
 	UsersIcon,
+	WrenchIcon,
 	XIcon,
 } from "lucide-react";
 import Image from "next/image";
@@ -45,6 +46,7 @@ interface NavItem {
 		| "categories"
 		| "customers"
 		| "orders"
+		| "services"
 		| "financialReports"
 		| "incomeStatement"
 		| "balanceSheet"
@@ -59,6 +61,7 @@ const navItems: NavItem[] = [
 	{ href: "/admin", labelKey: "dashboard", icon: LayoutDashboardIcon },
 	{ href: "/admin/pos", labelKey: "pos", icon: ShoppingCartIcon },
 	{ href: "/admin/orders", labelKey: "orders", icon: ShoppingBagIcon },
+	{ href: "/admin/services", labelKey: "services", icon: WrenchIcon },
 	{
 		href: "/admin/cashier",
 		labelKey: "cashier",

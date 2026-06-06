@@ -214,6 +214,7 @@ erDiagram
         integer price
         integer cost
         integer in_stock
+        boolean track_stock
         integer wholesale_price
         integer wholesale_min_qty
         varchar product_type
@@ -243,6 +244,7 @@ erDiagram
     orders {
         serial id PK
         varchar order_number
+        varchar client_order_id UK
         integer customer_id FK
         integer total_amount
         text note
@@ -271,6 +273,7 @@ erDiagram
         varchar transaction_number
         text description
         integer order_id FK
+        integer service_order_id FK
         integer payment_method_id FK
         integer amount
         varchar user_uid
@@ -284,6 +287,7 @@ erDiagram
     orders |o--o{ order_items : "contains"
     products |o--o{ order_items : "references"
     orders |o--o{ transactions : "generates"
+    service_orders |o--o{ transactions : "relates to"
     payment_methods |o--o{ transactions : "uses"
 ```
 

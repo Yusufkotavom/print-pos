@@ -20,61 +20,50 @@ import { Label } from "@finopenpos/ui/components/label";
 import { Skeleton } from "@finopenpos/ui/components/skeleton";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-	CheckCircle2Icon,
-	FileTextIcon,
-	Loader2Icon,
-	PlusCircle,
-	PrinterIcon,
-} from "lucide-react";
-import Link from "next/link";
+import { Loader2Icon, PlusCircle } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod/v4";
-import { PaymentDialog } from "@/components/payment-dialog";
 import { POSCartPanel } from "@/components/pos-cart-panel";
+import { POSPaymentFlow } from "@/components/pos-payment-flow";
 import { POSProductCatalog } from "@/components/pos-product-catalog";
+import { POSSuccessDialog } from "@/components/pos-success-dialog";
+import type {
+	PendingPOSOrder,
+	POSDraft,
+	POSProductItem,
+	QueuedPOSOrder,
+	SuccessPOSOrder,
+} from "@/components/pos-types";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useTRPC } from "@/lib/trpc/client";
-import type { RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
 
-type Product = RouterOutputs["products"]["list"][number];
-type POSProduct = Pick<
-	Product,
-	| "id"
-	| "name"
-	| "price"
-	| "in_stock"
-	| "track_stock"
-	| "product_type"
-	| "wholesale_price"
-	| "wholesale_min_qty"
-> & {
-	category: string;
-	quantity: number;
-};
+type POSProduct = POSProductItem;
+type SuccessOrder = SuccessPOSOrder;
 
-type SuccessOrder = {
-	id: number;
-	order_number: string | null;
-	created_at: Date | null;
-	total_amount: number;
-	paid_amount: number;
-	payment_status: string;
-	customer: { id: number; name: string; phone?: string } | null;
-	items: POSProduct[];
-	note?: string | null;
-	paymentMethodName?: string;
-};
+const POS_DRAFT_KEY = "finopenpos:pos:draft";
+const POS_QUEUE_KEY = "finopenpos:pos:queue";
 
-type PendingPOSOrder = {
-	customer: { id: number; name: string; phone?: string };
-	items: POSProduct[];
-	note: string;
-	total: number;
-};
+function createClientOrderId() {
+	return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+}
+
+function readPOSQueue() {
+	if (typeof window === "undefined") return [] as QueuedPOSOrder[];
+	try {
+		return JSON.parse(
+			localStorage.getItem(POS_QUEUE_KEY) ?? "[]",
+		) as QueuedPOSOrder[];
+	} catch {
+		return [];
+	}
+}
+
+function writePOSQueue(queue: QueuedPOSOrder[]) {
+	localStorage.setItem(POS_QUEUE_KEY, JSON.stringify(queue));
+}
 
 export default function POSPage() {
 	const trpc = useTRPC();
@@ -109,6 +98,10 @@ export default function POSPage() {
 	const [successOrder, setSuccessOrder] = useState<SuccessOrder | null>(null);
 	const [pendingPaymentOrder, setPendingPaymentOrder] =
 		useState<PendingPOSOrder | null>(null);
+	const [queueCount, setQueueCount] = useState(0);
+	const saleDetailsRef = useRef<HTMLDivElement | null>(null);
+	const syncedOrderIdsRef = useRef<Set<string>>(new Set());
+	const syncInFlightRef = useRef(false);
 
 	const { data: companySettings } = useQuery(
 		trpc.companySettings.get.queryOptions(),
@@ -117,32 +110,56 @@ export default function POSPage() {
 	const createOrderMutation = useMutation(
 		trpc.orders.create.mutationOptions({
 			onSuccess: (order, variables) => {
+				if (variables.clientOrderId) {
+					syncedOrderIdsRef.current.add(variables.clientOrderId);
+					const queue = readPOSQueue().filter(
+						(item) => item.clientOrderId !== variables.clientOrderId,
+					);
+					writePOSQueue(queue);
+					setQueueCount(queue.length);
+				}
 				queryClient.invalidateQueries(trpc.orders.list.queryOptions());
 				queryClient.invalidateQueries(trpc.products.list.queryOptions());
 				const selectedMethod = paymentMethods.find(
 					(method) => method.id === variables.paymentMethodId,
 				);
-				const draft = pendingPaymentOrder;
-				setSuccessOrder({
-					id: order.id,
-					order_number: order.order_number,
-					created_at: order.created_at,
-					total_amount: order.total_amount,
-					paid_amount: order.paid_amount,
-					payment_status: order.payment_status,
-					customer: draft?.customer ?? null,
-					items: draft?.items ?? [],
-					note: draft?.note,
-					paymentMethodName: selectedMethod?.name,
-				});
-				toast.success(tOrders("createdSuccessfully"));
-				setPendingPaymentOrder(null);
-				setIsCartOpen(false);
-				setSelectedProducts([]);
-				setSelectedCustomer(null);
-				setOrderNote("");
+				const draft =
+					pendingPaymentOrder?.clientOrderId === variables.clientOrderId
+						? pendingPaymentOrder
+						: null;
+				if (draft) {
+					setSuccessOrder({
+						id: order.id,
+						order_number: order.order_number,
+						created_at: order.created_at,
+						total_amount: order.total_amount,
+						paid_amount: order.paid_amount,
+						payment_status: order.payment_status,
+						customer: draft.customer,
+						items: draft.items,
+						note: draft.note,
+						paymentMethodName: selectedMethod?.name,
+					});
+					toast.success(tOrders("createdSuccessfully"));
+					setPendingPaymentOrder(null);
+					setIsCartOpen(false);
+					setSelectedProducts([]);
+					setSelectedCustomer(null);
+					setOrderNote("");
+				}
 			},
-			onError: (err) => toast.error(err.message || tOrders("createError")),
+			onError: (err, variables) => {
+				if (variables.clientOrderId) {
+					const queue = readPOSQueue().map((item) =>
+						item.clientOrderId === variables.clientOrderId
+							? { ...item, status: "failed" as const, error: err.message }
+							: item,
+					);
+					writePOSQueue(queue);
+					setQueueCount(queue.length);
+				}
+				toast.error(err.message || tOrders("createError"));
+			},
 		}),
 	);
 
@@ -180,6 +197,77 @@ export default function POSPage() {
 			? `${selectedCustomer.name} — ${selectedCustomerPhone}`
 			: selectedCustomer.name
 		: "";
+
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		try {
+			const saved = JSON.parse(
+				localStorage.getItem(POS_DRAFT_KEY) ?? "null",
+			) as POSDraft | null;
+			if (saved) {
+				setSelectedProducts(saved.items ?? []);
+				setSelectedCustomer(saved.customer ?? null);
+				setOrderNote(saved.note ?? "");
+			}
+		} catch {}
+		setQueueCount(readPOSQueue().length);
+	}, []);
+
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		const draft: POSDraft = {
+			items: selectedProducts,
+			customer: selectedCustomer,
+			note: orderNote,
+		};
+		localStorage.setItem(POS_DRAFT_KEY, JSON.stringify(draft));
+	}, [selectedProducts, selectedCustomer, orderNote]);
+
+	const syncQueuedOrders = useCallback(async () => {
+		if (typeof window === "undefined") return;
+		if (syncInFlightRef.current || !navigator.onLine) return;
+		const queue = readPOSQueue();
+		if (queue.length === 0) {
+			setQueueCount(0);
+			return;
+		}
+		syncInFlightRef.current = true;
+		try {
+			for (const queued of queue) {
+				if (syncedOrderIdsRef.current.has(queued.clientOrderId)) continue;
+				const nextQueue = readPOSQueue().map((item) =>
+					item.clientOrderId === queued.clientOrderId
+						? { ...item, status: "syncing" as const, error: undefined }
+						: item,
+				);
+				writePOSQueue(nextQueue);
+				setQueueCount(nextQueue.length);
+				await createOrderMutation.mutateAsync({
+					clientOrderId: queued.clientOrderId,
+					customerId: queued.customer.id,
+					products: queued.items.map((item) => ({
+						id: item.id,
+						quantity: item.quantity,
+						price: item.price,
+					})),
+					note: queued.note,
+					paymentMethodId: queued.paymentMethodId,
+					paidAmount: queued.paidAmount,
+					total: queued.total,
+				});
+			}
+		} finally {
+			syncInFlightRef.current = false;
+			setQueueCount(readPOSQueue().length);
+		}
+	}, [createOrderMutation]);
+
+	useEffect(() => {
+		void syncQueuedOrders();
+		const handleOnline = () => void syncQueuedOrders();
+		window.addEventListener("online", handleOnline);
+		return () => window.removeEventListener("online", handleOnline);
+	}, [syncQueuedOrders]);
 
 	const customerForm = useForm({
 		defaultValues: {
@@ -337,12 +425,25 @@ export default function POSPage() {
 	const handleCreateOrder = () => {
 		if (!selectedCustomer || !canCreate) return;
 		setPendingPaymentOrder({
+			clientOrderId: createClientOrderId(),
 			customer: { ...selectedCustomer, phone: selectedCustomerPhone },
 			items: [...selectedProducts],
 			note: orderNote,
 			total,
 		});
 		setIsCartOpen(false);
+	};
+
+	const handleOpenCart = () => {
+		if (!selectedCustomer) {
+			saleDetailsRef.current?.scrollIntoView({
+				behavior: "smooth",
+				block: "start",
+			});
+			toast.error(t("selectCustomerFirst"));
+			return;
+		}
+		setIsCartOpen(true);
 	};
 
 	if (loading) {
@@ -396,39 +497,46 @@ export default function POSPage() {
 
 	return (
 		<div className="mx-auto w-full max-w-7xl pb-24 lg:pb-0">
+			{queueCount > 0 && (
+				<div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 text-sm">
+					{t("queuedOrdersNotice", { count: queueCount })}
+				</div>
+			)}
 			<div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
 				<div className="min-w-0 space-y-4">
-					<Card>
-						<CardHeader>
-							<CardTitle>{t("saleDetails")}</CardTitle>
-						</CardHeader>
-						<CardContent className="flex flex-col gap-3 sm:flex-row sm:gap-4">
-							<div className="flex flex-1 gap-2">
-								<div className="min-w-0 flex-1">
-									<Combobox
-										items={customers.map((customer) => ({
-											id: customer.id,
-											name: customer.phone
-												? `${customer.name} — ${customer.phone}`
-												: customer.name,
-										}))}
-										placeholder={t("selectCustomer")}
-										value={selectedCustomerLabel}
-										onSelect={handleSelectCustomer}
-									/>
+					<div ref={saleDetailsRef}>
+						<Card>
+							<CardHeader>
+								<CardTitle>{t("saleDetails")}</CardTitle>
+							</CardHeader>
+							<CardContent className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+								<div className="flex flex-1 gap-2">
+									<div className="min-w-0 flex-1">
+										<Combobox
+											items={customers.map((customer) => ({
+												id: customer.id,
+												name: customer.phone
+													? `${customer.name} — ${customer.phone}`
+													: customer.name,
+											}))}
+											placeholder={t("selectCustomer")}
+											value={selectedCustomerLabel}
+											onSelect={handleSelectCustomer}
+										/>
+									</div>
+									<Button
+										type="button"
+										variant="outline"
+										size="icon"
+										onClick={() => setIsCustomerDialogOpen(true)}
+									>
+										<PlusCircle className="h-4 w-4" />
+										<span className="sr-only">{tCustomers("addCustomer")}</span>
+									</Button>
 								</div>
-								<Button
-									type="button"
-									variant="outline"
-									size="icon"
-									onClick={() => setIsCustomerDialogOpen(true)}
-								>
-									<PlusCircle className="h-4 w-4" />
-									<span className="sr-only">{tCustomers("addCustomer")}</span>
-								</Button>
-							</div>
-						</CardContent>
-					</Card>
+							</CardContent>
+						</Card>
+					</div>
 
 					<POSProductCatalog
 						products={filteredProducts}
@@ -458,8 +566,8 @@ export default function POSPage() {
 							{formatCurrency(total, locale)}
 						</div>
 					</div>
-					<Button type="button" onClick={() => setIsCartOpen(true)}>
-						Keranjang / Bayar
+					<Button type="button" onClick={handleOpenCart}>
+						{t("cartAndPay")}
 					</Button>
 				</div>
 			</div>
@@ -587,334 +695,67 @@ export default function POSPage() {
 				</DialogContent>
 			</Dialog>
 
-			<PaymentDialog
-				open={!!pendingPaymentOrder}
-				onOpenChange={(open) => {
-					if (!open) setPendingPaymentOrder(null);
-				}}
+			<POSPaymentFlow
+				pendingOrder={pendingPaymentOrder}
+				paymentMethods={paymentMethods}
+				locale={locale}
+				isPending={createOrderMutation.isPending}
 				title={tOrders("receivePayment")}
 				totalLabel={tc("total")}
 				amountLabel={tOrders("paymentAmount")}
 				paymentMethodLabel={tOrders("paymentMethod")}
 				submitLabel={tOrders("savePayment")}
 				cancelLabel={tc("cancel")}
-				totalAmount={pendingPaymentOrder?.total ?? 0}
-				maxAmount={pendingPaymentOrder?.total ?? 0}
-				locale={locale}
-				paymentMethods={paymentMethods}
-				isPending={createOrderMutation.isPending}
-				onSubmit={({ paymentMethodId, amount }) => {
-					if (!pendingPaymentOrder) return;
-					createOrderMutation.mutate({
-						customerId: pendingPaymentOrder.customer.id,
-						products: pendingPaymentOrder.items.map((item) => ({
-							id: item.id,
-							quantity: item.quantity,
-							price: item.price,
-						})),
-						note: pendingPaymentOrder.note,
-						paymentMethodId,
-						paidAmount: amount,
-						total: pendingPaymentOrder.total,
+				queuedMessage={t("orderQueued")}
+				onOpenChange={(open) => {
+					if (!open) setPendingPaymentOrder(null);
+				}}
+				onQueueChange={(queue) => setQueueCount(queue.length)}
+				onClearDraft={() => {
+					setSelectedProducts([]);
+					setSelectedCustomer(null);
+					setOrderNote("");
+				}}
+				onSubmitOrder={(payload) => {
+					const draft = pendingPaymentOrder;
+					createOrderMutation.mutate(payload, {
+						onError: () => {
+							if (!draft) return;
+							const queuedOrder: QueuedPOSOrder = {
+								...draft,
+								paymentMethodId: payload.paymentMethodId,
+								paidAmount: payload.paidAmount,
+								createdAt: new Date().toISOString(),
+								status: "pending",
+							};
+							const queue = [
+								...readPOSQueue().filter(
+									(item) => item.clientOrderId !== queuedOrder.clientOrderId,
+								),
+								queuedOrder,
+							];
+							writePOSQueue(queue);
+							setQueueCount(queue.length);
+							setPendingPaymentOrder(null);
+							setSelectedProducts([]);
+							setSelectedCustomer(null);
+							setOrderNote("");
+							toast.success(t("orderQueued"));
+						},
 					});
 				}}
+				readQueue={readPOSQueue}
+				writeQueue={writePOSQueue}
 			/>
 
-			{/* Dialog Sukses Transaksi / Cetak Struk */}
-			{successOrder && (
-				<Dialog
-					open={!!successOrder}
-					onOpenChange={(open) => {
-						if (!open) setSuccessOrder(null);
-					}}
-				>
-					<DialogContent className="max-w-md print:hidden">
-						<DialogHeader>
-							<DialogTitle className="flex items-center gap-2 text-green-600">
-								<CheckCircle2Icon className="h-5 w-5" />
-								{tOrders("createdSuccessfully")}
-							</DialogTitle>
-						</DialogHeader>
-						<div className="space-y-4 py-4">
-							<p className="text-center text-muted-foreground text-sm">
-								Transaksi{" "}
-								<strong>
-									{successOrder.order_number ?? `#${successOrder.id}`}
-								</strong>{" "}
-								berhasil disimpan.
-							</p>
-
-							{/* Preview struk di layar */}
-							<div className="max-h-56 overflow-y-auto rounded border bg-muted/20 p-4 font-mono text-xs">
-								<div className="mb-2 text-center font-bold">
-									PRATINJAU STRUK
-								</div>
-								<div className="flex justify-between">
-									<span>No. Transaksi:</span>
-									<span>
-										{successOrder.order_number ?? `#${successOrder.id}`}
-									</span>
-								</div>
-								<div className="flex justify-between">
-									<span>Tanggal:</span>
-									<span>
-										{successOrder.created_at
-											? new Date(successOrder.created_at).toLocaleString(
-													"id-ID",
-												)
-											: new Date().toLocaleString("id-ID")}
-									</span>
-								</div>
-								<div className="flex justify-between">
-									<span>Metode:</span>
-									<span>{successOrder.paymentMethodName}</span>
-								</div>
-								<hr className="my-2 border-dashed" />
-								<div className="space-y-1">
-									{successOrder.items.map((item) => (
-										<div key={item.id} className="flex justify-between">
-											<span>
-												{item.name} x{item.quantity}
-											</span>
-											<span>
-												Rp{" "}
-												{((item.price * item.quantity) / 100).toLocaleString(
-													"id-ID",
-												)}
-											</span>
-										</div>
-									))}
-								</div>
-								{successOrder.note && (
-									<>
-										<hr className="my-2 border-dashed" />
-										<div className="space-y-1 text-[10px] text-muted-foreground">
-											<div className="font-semibold text-foreground">
-												Catatan
-											</div>
-											<div>{successOrder.note}</div>
-										</div>
-									</>
-								)}
-								<hr className="my-2 border-dashed" />
-								<div className="flex justify-between font-bold">
-									<span>Total:</span>
-									<span>
-										Rp{" "}
-										{(successOrder.total_amount / 100).toLocaleString("id-ID")}
-									</span>
-								</div>
-								<div className="flex justify-between text-muted-foreground">
-									<span>Dibayar:</span>
-									<span>
-										Rp{" "}
-										{(successOrder.paid_amount / 100).toLocaleString("id-ID")}
-									</span>
-								</div>
-							</div>
-						</div>
-						<DialogFooter className="mt-4 flex flex-col flex-wrap gap-2 sm:flex-row sm:justify-center">
-							<Button
-								variant="outline"
-								className="w-full sm:w-auto"
-								onClick={() => {
-									window.print();
-								}}
-							>
-								<PrinterIcon className="mr-2 h-4 w-4" />
-								Cetak Struk
-							</Button>
-
-							<Button
-								variant="outline"
-								className="w-full sm:w-auto"
-								onClick={() => {
-									window.open(`/api/orders/${successOrder.id}/pdf`, "_blank");
-								}}
-							>
-								<FileTextIcon className="mr-2 h-4 w-4" />
-								Print Invoice
-							</Button>
-
-							<Button
-								variant="outline"
-								className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 sm:w-auto"
-								onClick={() => {
-									const customerPhone = successOrder.customer?.phone;
-									if (customerPhone) {
-										const cleanPhone = customerPhone.replace(/[^0-9]/g, "");
-										const waPhone = cleanPhone.startsWith("0")
-											? `62${cleanPhone.substring(1)}`
-											: cleanPhone;
-
-										const template =
-											companySettings?.whatsapp_template ||
-											"Halo! Pesanan Anda {order_number} telah berhasil diproses. Anda bisa mengecek invoice melalui tautan berikut: {invoice_url} \nTerima kasih!";
-										const orderNum =
-											successOrder.order_number ?? `#${successOrder.id}`;
-										const invoiceUrl = `${window.location.origin}/api/orders/${successOrder.id}/pdf`;
-
-										const whatsappText = template
-											.replace(/{order_number}/g, orderNum)
-											.replace(/{invoice_url}/g, invoiceUrl);
-
-										window.open(
-											`https://wa.me/${waPhone}?text=${encodeURIComponent(whatsappText)}`,
-											"_blank",
-										);
-									} else {
-										toast.error(
-											"Nomor WhatsApp pelanggan tidak tersedia untuk transaksi ini.",
-										);
-									}
-								}}
-							>
-								<svg
-									className="mr-2 h-4 w-4"
-									fill="currentColor"
-									viewBox="0 0 24 24"
-									aria-label="WhatsApp"
-								>
-									<path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z" />
-								</svg>
-								WhatsApp
-							</Button>
-
-							<Link
-								href={`/admin/orders/${successOrder.id}`}
-								className="w-full sm:w-auto"
-							>
-								<Button variant="secondary" className="w-full">
-									Detail Invoice
-								</Button>
-							</Link>
-							<Button
-								className="w-full sm:w-auto"
-								onClick={() => setSuccessOrder(null)}
-							>
-								Transaksi Baru
-							</Button>
-						</DialogFooter>
-					</DialogContent>
-				</Dialog>
-			)}
-
-			{/* Thermal Receipt Section for printing */}
-			{successOrder && (
-				<div
-					id="thermal-receipt"
-					className="hidden font-mono text-[10px] leading-tight print:absolute print:top-0 print:left-0 print:block print:w-[80mm] print:bg-white print:p-4 print:text-black"
-				>
-					<style
-						dangerouslySetInnerHTML={{
-							__html: `
-						@media print {
-							body * {
-								visibility: hidden;
-							}
-							#thermal-receipt, #thermal-receipt * {
-								visibility: visible;
-							}
-							#thermal-receipt {
-								position: absolute;
-								left: 0;
-								top: 0;
-								width: 80mm;
-								background: white;
-								color: black;
-								padding: 10px;
-							}
-							@page {
-								margin: 0;
-							}
-						}
-					`,
-						}}
-					/>
-					<div className="mb-2 border-b pb-2 text-center">
-						<h2 className="font-bold text-sm uppercase">
-							{companySettings?.company_name || "FinOpenPOS"}
-						</h2>
-						{companySettings?.trade_name && (
-							<p className="text-[9px]">{companySettings.trade_name}</p>
-						)}
-						{companySettings?.address && <p>{companySettings.address}</p>}
-						{companySettings?.phone && <p>{companySettings.phone}</p>}
-						{companySettings?.receipt_header && (
-							<p className="mt-1 border-t border-dashed pt-1 text-[9px] italic">
-								{companySettings.receipt_header}
-							</p>
-						)}
-					</div>
-					<div className="mb-2 space-y-1">
-						<p>No: {successOrder.order_number ?? `#${successOrder.id}`}</p>
-						<p>
-							Tgl:{" "}
-							{successOrder.created_at
-								? new Date(successOrder.created_at).toLocaleString("id-ID")
-								: new Date().toLocaleString("id-ID")}
-						</p>
-						<p>Pelanggan: {successOrder.customer?.name || "Pelanggan Umum"}</p>
-					</div>
-					<div className="my-2 space-y-1 border-t border-b border-dashed py-2">
-						{successOrder.items.map((item) => (
-							<div key={item.id} className="flex justify-between">
-								<div className="max-w-[70%]">
-									<p>{item.name}</p>
-									<p className="text-gray-500">
-										{item.quantity} x Rp{" "}
-										{(item.price / 100).toLocaleString("id-ID")}
-									</p>
-								</div>
-								<p>
-									Rp{" "}
-									{((item.price * item.quantity) / 100).toLocaleString("id-ID")}
-								</p>
-							</div>
-						))}
-					</div>
-					{successOrder.note && (
-						<div className="mb-2 border-b border-dashed pb-2 text-[9px]">
-							<p className="font-bold">Catatan:</p>
-							<p>{successOrder.note}</p>
-						</div>
-					)}
-					<div className="space-y-1 text-right">
-						<div className="flex justify-between font-bold">
-							<p>TOTAL:</p>
-							<p>
-								Rp {(successOrder.total_amount / 100).toLocaleString("id-ID")}
-							</p>
-						</div>
-						<div className="flex justify-between">
-							<p>Bayar ({successOrder.paymentMethodName || "Tunai"}):</p>
-							<p>
-								Rp {(successOrder.paid_amount / 100).toLocaleString("id-ID")}
-							</p>
-						</div>
-						<div className="flex justify-between border-t border-dashed pt-1">
-							<p>Sisa Tagihan:</p>
-							<p>
-								Rp{" "}
-								{Math.max(
-									0,
-									(successOrder.total_amount - successOrder.paid_amount) / 100,
-								).toLocaleString("id-ID")}
-							</p>
-						</div>
-					</div>
-					<div className="mt-4 border-t border-dashed pt-2 text-center">
-						{companySettings?.receipt_footer ? (
-							<p>{companySettings.receipt_footer}</p>
-						) : (
-							<>
-								<p>Terima Kasih</p>
-								<p>Atas Kunjungan Anda</p>
-							</>
-						)}
-					</div>
-				</div>
-			)}
+			<POSSuccessDialog
+				order={successOrder}
+				companySettings={companySettings}
+				onOpenChange={(open) => {
+					if (!open) setSuccessOrder(null);
+				}}
+				title={tOrders("createdSuccessfully")}
+			/>
 		</div>
 	);
 }

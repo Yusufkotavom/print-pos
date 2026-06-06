@@ -11,6 +11,7 @@ import {
 import { Label } from "@finopenpos/ui/components/label";
 import { cn } from "@finopenpos/ui/lib/utils";
 import { BanknoteIcon, CreditCardIcon, Loader2Icon } from "lucide-react";
+import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { FormattedNumberInput } from "@/components/formatted-number-input";
 import { formatCurrency } from "@/lib/utils";
@@ -31,9 +32,11 @@ interface PaymentDialogProps {
 	cancelLabel: string;
 	totalAmount: number;
 	maxAmount?: number;
+	allowOverpayment?: boolean;
 	locale: string;
 	paymentMethods: PaymentMethod[];
 	isPending?: boolean;
+	extraContent?: ReactNode;
 	onSubmit: (data: { paymentMethodId: number; amount: number }) => void;
 }
 
@@ -48,9 +51,11 @@ export function PaymentDialog({
 	cancelLabel,
 	totalAmount,
 	maxAmount = totalAmount,
+	allowOverpayment = false,
 	locale,
 	paymentMethods,
 	isPending,
+	extraContent,
 	onSubmit,
 }: PaymentDialogProps) {
 	const [paymentMethodId, setPaymentMethodId] = useState<number | null>(null);
@@ -64,8 +69,11 @@ export function PaymentDialog({
 	}, [open, maxAmount, paymentMethods]);
 
 	const amountInCents = amount * 100;
+	const changeAmount = Math.max(0, amountInCents - totalAmount);
 	const canSubmit =
-		paymentMethodId !== null && amountInCents > 0 && amountInCents <= maxAmount;
+		paymentMethodId !== null &&
+		amountInCents > 0 &&
+		(allowOverpayment || amountInCents <= maxAmount);
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -123,7 +131,13 @@ export function PaymentDialog({
 							value={amount}
 							onValueChange={(value) => setAmount(value ?? 0)}
 						/>
+						{allowOverpayment && changeAmount > 0 && (
+							<div className="rounded-lg border bg-emerald-50 px-3 py-2 text-emerald-700 text-sm">
+								Kembalian: {formatCurrency(changeAmount, locale)}
+							</div>
+						)}
 					</div>
+					{extraContent}
 				</div>
 
 				<DialogFooter>

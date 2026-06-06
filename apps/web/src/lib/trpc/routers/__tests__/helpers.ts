@@ -13,6 +13,8 @@ const TABLES: PgTable[] = [
 	schema.paymentMethods,
 	schema.orders,
 	schema.orderItems,
+	schema.serviceOrders,
+	schema.serviceOrderItems,
 	schema.transactions,
 	schema.cities,
 	schema.companySettings,
@@ -35,6 +37,7 @@ function tableToDDL(table: PgTable): string {
 		if (col.name === "paid_amount") parts.push("DEFAULT 0");
 		if (col.name === "payment_status") parts.push("DEFAULT 'unpaid'");
 		if (col.name === "track_stock") parts.push("DEFAULT true");
+		if (col.name === "warranty_unit") parts.push("DEFAULT 'none'");
 		if (col.hasDefault && !isSerial && sqlType.startsWith("timestamp"))
 			parts.push("DEFAULT NOW()");
 

@@ -31,6 +31,7 @@ export interface InvoicePDFProps {
 		website?: string | null;
 		address?: string | null;
 		invoice_terms?: string | null;
+		service_terms?: string | null;
 		invoice_template?: string | null;
 		whatsapp_template?: string | null;
 		receipt_header?: string | null;
