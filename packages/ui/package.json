@@ -29,6 +29,7 @@
 		"lucide-react": "catalog:",
 		"next-intl": "^4.8.3",
 		"react": "catalog:",
+		"react-day-picker": "^10.0.1",
 		"react-dom": "catalog:",
 		"recharts": "^2.15.4",
 		"tailwind-merge": "^3.3.1",

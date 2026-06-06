@@ -42,18 +42,26 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	FilePenIcon,
 	FileUpIcon,
+	ImageIcon,
 	PackageIcon,
 	PlusIcon,
 	TrashIcon,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod/v4";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { FormattedNumberInput } from "@/components/formatted-number-input";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
+import {
+	cacheProductImage,
+	readCachedProductImage,
+	removeCachedProductImage,
+} from "@/lib/local-db/repo";
+import { uploadProductImage } from "@/lib/product-images";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
@@ -102,6 +110,26 @@ export default function Products() {
 	];
 
 	const columns: Column<Product>[] = [
+		{
+			key: "image_url",
+			header: "Gambar",
+			hideOnMobile: true,
+			render: (row) =>
+				row.image_url ? (
+					<Image
+						src={row.image_url}
+						alt={row.name}
+						width={40}
+						height={40}
+						className="h-10 w-10 rounded-md object-cover"
+						unoptimized
+					/>
+				) : (
+					<div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
+						<ImageIcon className="h-4 w-4 text-muted-foreground" />
+					</div>
+				),
+		},
 		{
 			key: "name",
 			header: t("product"),
@@ -183,16 +211,39 @@ export default function Products() {
 	const [searchTerm, setSearchTerm] = useState("");
 	const [categoryFilter, setCategoryFilter] = useState("all");
 	const [stockFilter, setStockFilter] = useState("all");
+	const [imageFile, setImageFile] = useState<File | null>(null);
+	const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+	const [imageMeta, setImageMeta] = useState<{
+		url?: string;
+		key?: string;
+		width?: number;
+		height?: number;
+	} | null>(null);
 
 	const isEditing = editingId !== null;
 	const invalidateKeys = trpc.products.list.queryOptions().queryKey;
+	const resetImageState = () => {
+		setImageFile(null);
+		setImagePreviewUrl(null);
+		setImageMeta(null);
+	};
+
+	useEffect(() => {
+		return () => {
+			if (imagePreviewUrl?.startsWith("blob:"))
+				URL.revokeObjectURL(imagePreviewUrl);
+		};
+	}, [imagePreviewUrl]);
 
 	const createMutation = useCrudMutation({
 		mutationOptions: trpc.products.create.mutationOptions(),
 		invalidateKeys,
 		successMessage: t("created"),
 		errorMessage: t("createError"),
-		onSuccess: () => setIsDialogOpen(false),
+		onSuccess: () => {
+			resetImageState();
+			setIsDialogOpen(false);
+		},
 	});
 
 	const updateMutation = useCrudMutation({
@@ -200,7 +251,10 @@ export default function Products() {
 		invalidateKeys,
 		successMessage: t("updated"),
 		errorMessage: t("updateError"),
-		onSuccess: () => setIsDialogOpen(false),
+		onSuccess: () => {
+			resetImageState();
+			setIsDialogOpen(false);
+		},
 	});
 
 	const deleteMutation = useCrudMutation({
@@ -240,9 +294,12 @@ export default function Products() {
 		validators: {
 			onSubmit: productFormSchema,
 		},
-		onSubmit: ({ value }) => {
+		onSubmit: async ({ value }) => {
 			const trackStock = value.product_type === "product" && value.track_stock;
 			const inStock = trackStock ? value.in_stock : 0;
+			const uploadedImage = imageFile
+				? await uploadProductImage(imageFile)
+				: imageMeta;
 			const payload = {
 				name: value.name,
 				description: value.description || undefined,
@@ -257,6 +314,10 @@ export default function Products() {
 						? Math.round(value.wholesale_price * 100)
 						: undefined,
 				wholesale_min_qty: value.wholesale_min_qty ?? undefined,
+				image_url: uploadedImage?.url,
+				image_key: uploadedImage?.key,
+				image_width: uploadedImage?.width,
+				image_height: uploadedImage?.height,
 			};
 
 			if (isEditing) {
@@ -290,6 +351,17 @@ export default function Products() {
 	const openEdit = (p: Product) => {
 		setEditingId(p.id);
 		form.reset();
+		setImageFile(null);
+		setImageMeta({
+			url: p.image_url ?? undefined,
+			key: p.image_key ?? undefined,
+			width: p.image_width ?? undefined,
+			height: p.image_height ?? undefined,
+		});
+		setImagePreviewUrl(p.image_url ?? null);
+		void readCachedProductImage(p.id).then((cached) => {
+			if (cached?.blob) setImagePreviewUrl(URL.createObjectURL(cached.blob));
+		});
 		form.setFieldValue("name", p.name);
 		form.setFieldValue("description", p.description ?? "");
 		form.setFieldValue("price", p.price / 100);
@@ -308,10 +380,22 @@ export default function Products() {
 
 	const handleDelete = () => {
 		if (deleteId !== null) {
+			void removeCachedProductImage(deleteId);
 			deleteMutation.mutate({ id: deleteId });
 			setIsDeleteOpen(false);
 			setDeleteId(null);
 		}
+	};
+
+	const handleImageChange = async (file: File | null) => {
+		setImageFile(file);
+		if (!file) {
+			setImagePreviewUrl(imageMeta?.url ?? null);
+			return;
+		}
+		const objectUrl = URL.createObjectURL(file);
+		setImagePreviewUrl(objectUrl);
+		if (editingId !== null) await cacheProductImage(editingId, file);
 	};
 
 	const actionsColumn: Column<Product> = {
@@ -446,7 +530,12 @@ export default function Products() {
 
 							<Button
 								size="sm"
-								onClick={() => setIsDialogOpen(true)}
+								onClick={() => {
+									setEditingId(null);
+									form.reset();
+									resetImageState();
+									setIsDialogOpen(true);
+								}}
 								className="w-full whitespace-nowrap sm:w-auto"
 							>
 								<PlusIcon className="mr-2 h-4 w-4" />
@@ -469,7 +558,10 @@ export default function Products() {
 			<Dialog
 				open={isDialogOpen}
 				onOpenChange={(open) => {
-					if (!open) setIsDialogOpen(false);
+					if (!open) {
+						resetImageState();
+						setIsDialogOpen(false);
+					}
 				}}
 			>
 				<DialogContent>
@@ -491,6 +583,7 @@ export default function Products() {
 						<Tabs defaultValue="info">
 							<TabsList className="mb-4 w-full">
 								<TabsTrigger value="info">Info Dasar</TabsTrigger>
+								<TabsTrigger value="image">Gambar</TabsTrigger>
 								<TabsTrigger value="wholesale">Harga Grosir</TabsTrigger>
 							</TabsList>
 
@@ -705,6 +798,38 @@ export default function Products() {
 											</div>
 										)}
 									</form.Field>
+								</div>
+							</TabsContent>
+
+							<TabsContent value="image">
+								<div className="grid gap-4 py-2">
+									<div className="flex flex-col gap-3">
+										<Label htmlFor="product-image">Gambar Produk</Label>
+										<div className="flex items-center gap-4">
+											<div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-lg border bg-muted">
+												{imagePreviewUrl ? (
+													<Image
+														src={imagePreviewUrl}
+														alt="Product image preview"
+														width={96}
+														height={96}
+														className="h-24 w-24 object-cover"
+														unoptimized
+													/>
+												) : (
+													<ImageIcon className="h-6 w-6 text-muted-foreground" />
+												)}
+											</div>
+											<Input
+												id="product-image"
+												type="file"
+												accept="image/png,image/jpeg,image/webp"
+												onChange={(e) =>
+													void handleImageChange(e.target.files?.[0] ?? null)
+												}
+											/>
+										</div>
+									</div>
 								</div>
 							</TabsContent>
 

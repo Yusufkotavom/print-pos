@@ -1,0 +1,19 @@
+{
+	"name": "FinOpenPOS",
+	"short_name": "FinOpenPOS",
+	"description": "Local-first POS for retail and service businesses",
+	"start_url": "/admin/pos",
+	"scope": "/",
+	"display": "standalone",
+	"background_color": "#ffffff",
+	"theme_color": "#111827",
+	"orientation": "portrait-primary",
+	"icons": [
+		{
+			"src": "/icons/icon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "any maskable"
+		}
+	]
+}

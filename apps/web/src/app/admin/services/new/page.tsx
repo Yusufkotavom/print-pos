@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@finopenpos/ui/components/button";
+import { Calendar } from "@finopenpos/ui/components/calendar";
 import {
 	Card,
 	CardContent,
@@ -14,7 +15,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@finopenpos/ui/components/dialog";
-import { Input } from "@finopenpos/ui/components/input";
 import { Label } from "@finopenpos/ui/components/label";
 import {
 	Popover,
@@ -33,12 +33,28 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarIcon, PlusCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { POSCartPanel } from "@/components/pos-cart-panel";
 import { POSProductCatalog } from "@/components/pos-product-catalog";
 import type { POSProductItem } from "@/components/pos-types";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import {
+	createClientServiceOrderId,
+	type QueuedServiceOrder,
+	useServiceOrderSync,
+} from "@/hooks/use-service-order-sync";
+import { SERVICE_DRAFT_KEY } from "@/lib/local-db/keys";
+import {
+	clearDraft,
+	readCachedCustomers,
+	readCachedProducts,
+	readDraft,
+	replaceCachedCustomers,
+	replaceCachedProducts,
+	saveDraft,
+} from "@/lib/local-db/repo";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
 
@@ -49,8 +65,21 @@ export default function NewServicePage() {
 	const t = useTranslations("services");
 	const tPos = useTranslations("pos");
 	const locale = useLocale();
-	const { data: products = [] } = useQuery(trpc.products.list.queryOptions());
-	const { data: customers = [] } = useQuery(trpc.customers.list.queryOptions());
+	const isOnline = useOnlineStatus();
+	const { data: remoteProducts = [] } = useQuery(
+		trpc.products.list.queryOptions(),
+	);
+	const { data: remoteCustomers = [] } = useQuery(
+		trpc.customers.list.queryOptions(),
+	);
+	const [cachedProducts, setCachedProducts] = useState<typeof remoteProducts>(
+		[],
+	);
+	const [cachedCustomers, setCachedCustomers] = useState<
+		typeof remoteCustomers
+	>([]);
+	const products = remoteProducts.length ? remoteProducts : cachedProducts;
+	const customers = remoteCustomers.length ? remoteCustomers : cachedCustomers;
 	const [selectedProducts, setSelectedProducts] = useState<POSProductItem[]>(
 		[],
 	);
@@ -70,6 +99,65 @@ export default function NewServicePage() {
 	const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 	const [isCartOpen, setIsCartOpen] = useState(false);
 	const search = useDebouncedValue(productSearch, 250);
+
+	useEffect(() => {
+		void (async () => {
+			const [productCache, customerCache, draft] = await Promise.all([
+				readCachedProducts<(typeof remoteProducts)[number]>(),
+				readCachedCustomers<(typeof remoteCustomers)[number]>(),
+				readDraft<{
+					items: POSProductItem[];
+					customer: { id: number; name: string } | null;
+					serviceType: "phone" | "printing" | "other";
+					customerNote: string;
+					internalNote: string;
+					detailText: string;
+					estimatedDoneAt?: string;
+				}>(SERVICE_DRAFT_KEY),
+			]);
+			setCachedProducts(productCache);
+			setCachedCustomers(customerCache);
+			if (draft) {
+				setSelectedProducts(draft.items ?? []);
+				setSelectedCustomer(draft.customer ?? null);
+				setServiceType(draft.serviceType ?? "other");
+				setCustomerNote(draft.customerNote ?? "");
+				setInternalNote(draft.internalNote ?? "");
+				setDetailText(draft.detailText ?? "");
+				setEstimatedDoneAt(
+					draft.estimatedDoneAt ? new Date(draft.estimatedDoneAt) : undefined,
+				);
+			}
+		})();
+	}, []);
+
+	useEffect(() => {
+		if (remoteProducts.length) void replaceCachedProducts(remoteProducts);
+	}, [remoteProducts]);
+
+	useEffect(() => {
+		if (remoteCustomers.length) void replaceCachedCustomers(remoteCustomers);
+	}, [remoteCustomers]);
+
+	useEffect(() => {
+		void saveDraft(SERVICE_DRAFT_KEY, {
+			items: selectedProducts,
+			customer: selectedCustomer,
+			serviceType,
+			customerNote,
+			internalNote,
+			detailText,
+			estimatedDoneAt: estimatedDoneAt?.toISOString(),
+		});
+	}, [
+		selectedProducts,
+		selectedCustomer,
+		serviceType,
+		customerNote,
+		internalNote,
+		detailText,
+		estimatedDoneAt,
+	]);
 
 	const productCategories = useMemo(() => {
 		const names = products
@@ -98,14 +186,48 @@ export default function NewServicePage() {
 
 	const createMutation = useMutation(
 		trpc.serviceOrders.create.mutationOptions({
-			onSuccess: (serviceOrder) => {
+			onSuccess: async (serviceOrder, variables) => {
+				if (variables.clientServiceOrderId) {
+					await markServiceOrderSynced(
+						variables.clientServiceOrderId,
+						serviceOrder.id,
+					);
+				}
+				await clearDraft(SERVICE_DRAFT_KEY);
 				queryClient.invalidateQueries(trpc.serviceOrders.list.queryOptions());
 				toast.success(t("created"));
 				router.push(`/admin/services/${serviceOrder.id}`);
 			},
-			onError: (error) => toast.error(error.message || t("createError")),
+			onError: async (error, variables) => {
+				if (variables.clientServiceOrderId) {
+					await markServiceOrderFailed(
+						variables.clientServiceOrderId,
+						error.message,
+					);
+				}
+				toast.error(error.message || t("createError"));
+			},
 		}),
 	);
+
+	const {
+		queueCount,
+		queueServiceOrder,
+		markServiceOrderSynced,
+		markServiceOrderFailed,
+		syncQueuedServiceOrders,
+	} = useServiceOrderSync({
+		createServiceOrder: async (payload) => {
+			await createMutation.mutateAsync(payload);
+		},
+	});
+
+	useEffect(() => {
+		void syncQueuedServiceOrders();
+		const handleOnline = () => void syncQueuedServiceOrders();
+		window.addEventListener("online", handleOnline);
+		return () => window.removeEventListener("online", handleOnline);
+	}, [syncQueuedServiceOrders]);
 
 	const handleSelectProduct = (productId: number | string) => {
 		const product = products.find((item) => item.id === productId);
@@ -140,7 +262,8 @@ export default function NewServicePage() {
 	const canCreate = selectedCustomer && selectedProducts.length > 0;
 	const handleCreateService = () => {
 		if (!selectedCustomer) return;
-		createMutation.mutate({
+		const payload: QueuedServiceOrder = {
+			clientServiceOrderId: createClientServiceOrderId(),
 			customerId: selectedCustomer.id,
 			serviceType,
 			estimatedDoneAt,
@@ -151,9 +274,36 @@ export default function NewServicePage() {
 				id: item.id,
 				quantity: item.quantity,
 				price: item.price,
+				name: item.name,
 				lineType: item.product_type === "service" ? "service" : "product",
 			})),
 			total,
+		};
+		if (!navigator.onLine) {
+			void queueServiceOrder(payload).then(async () => {
+				await clearDraft(SERVICE_DRAFT_KEY);
+				setSelectedProducts([]);
+				setSelectedCustomer(null);
+				setCustomerNote("");
+				setInternalNote("");
+				setDetailText("");
+				setEstimatedDoneAt(undefined);
+				toast.success(t("serviceQueued"));
+			});
+			return;
+		}
+		createMutation.mutate(payload, {
+			onError: async () => {
+				await queueServiceOrder(payload);
+				await clearDraft(SERVICE_DRAFT_KEY);
+				setSelectedProducts([]);
+				setSelectedCustomer(null);
+				setCustomerNote("");
+				setInternalNote("");
+				setDetailText("");
+				setEstimatedDoneAt(undefined);
+				toast.success(t("serviceQueued"));
+			},
 		});
 	};
 	const cartPanel = (
@@ -193,6 +343,24 @@ export default function NewServicePage() {
 
 	return (
 		<div className="mx-auto w-full max-w-7xl pb-24 lg:pb-0">
+			{!isOnline && (
+				<div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-blue-900 text-sm">
+					Offline mode. Service baru disimpan lokal dulu.
+				</div>
+			)}
+			{queueCount > 0 && (
+				<div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 text-sm">
+					<span>{queueCount} service menunggu sinkronisasi.</span>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => void syncQueuedServiceOrders()}
+					>
+						{t("syncNow")}
+					</Button>
+				</div>
+			)}
 			<div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
 				<div className="min-w-0 space-y-4">
 					<Card>
@@ -263,21 +431,11 @@ export default function NewServicePage() {
 													: t("selectDate")}
 											</Button>
 										</PopoverTrigger>
-										<PopoverContent className="w-auto" align="start">
-											<Input
-												type="date"
-												value={
-													estimatedDoneAt
-														? estimatedDoneAt.toISOString().slice(0, 10)
-														: ""
-												}
-												onChange={(event) =>
-													setEstimatedDoneAt(
-														event.target.value
-															? new Date(`${event.target.value}T00:00:00`)
-															: undefined,
-													)
-												}
+										<PopoverContent className="w-auto p-0" align="start">
+											<Calendar
+												mode="single"
+												selected={estimatedDoneAt}
+												onSelect={setEstimatedDoneAt}
 											/>
 										</PopoverContent>
 									</Popover>

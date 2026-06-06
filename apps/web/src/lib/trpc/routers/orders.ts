@@ -124,6 +124,7 @@ export const ordersRouter = router({
 		})
 		.input(
 			z.object({
+				clientOrderId: z.string().min(1).max(64).optional(),
 				customerId: z.number(),
 				paymentMethodId: z.number().optional(),
 				note: z.string().optional(),
@@ -142,6 +143,16 @@ export const ordersRouter = router({
 		.output(orderWithCustomerSchema)
 		.mutation(async ({ ctx, input }) => {
 			return db.transaction(async (tx) => {
+				if (input.clientOrderId) {
+					const existingOrder = await tx.query.orders.findFirst({
+						where: and(
+							eq(orders.client_order_id, input.clientOrderId),
+							eq(orders.user_uid, ctx.user.id),
+						),
+						with: { customer: true },
+					});
+					if (existingOrder) return existingOrder;
+				}
 				const paidAmount = input.paidAmount ?? 0;
 				const paymentMethodId = input.paymentMethodId;
 				if (paidAmount > 0 && !paymentMethodId) {
@@ -157,6 +168,7 @@ export const ordersRouter = router({
 				const [createdOrder] = await tx
 					.insert(orders)
 					.values({
+						client_order_id: input.clientOrderId,
 						customer_id: input.customerId,
 						total_amount: input.total,
 						note: input.note?.trim() || null,

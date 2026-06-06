@@ -44,6 +44,7 @@ const serviceOrderSummarySchema = z.object({
 	warranty_unit: z.string(),
 	warranty_value: z.number().nullable(),
 	completed_at: z.date().nullable(),
+	client_service_order_id: z.string().nullable(),
 	customer: z.object({ name: z.string(), phone: z.string() }).nullable(),
 });
 
@@ -106,6 +107,7 @@ export const serviceOrdersRouter = router({
 	create: protectedProcedure
 		.input(
 			z.object({
+				clientServiceOrderId: z.string().min(1).max(64).optional(),
 				customerId: z.number(),
 				serviceType: serviceTypeSchema.default("other"),
 				estimatedDoneAt: z.date().optional(),
@@ -128,9 +130,23 @@ export const serviceOrdersRouter = router({
 		.output(serviceOrderSummarySchema)
 		.mutation(async ({ ctx, input }) => {
 			return db.transaction(async (tx) => {
+				if (input.clientServiceOrderId) {
+					const existing = await tx.query.serviceOrders.findFirst({
+						where: and(
+							eq(
+								serviceOrders.client_service_order_id,
+								input.clientServiceOrderId,
+							),
+							eq(serviceOrders.user_uid, ctx.user.id),
+						),
+						with: { customer: { columns: { name: true, phone: true } } },
+					});
+					if (existing) return existing;
+				}
 				const [created] = await tx
 					.insert(serviceOrders)
 					.values({
+						client_service_order_id: input.clientServiceOrderId,
 						customer_id: input.customerId,
 						service_type: input.serviceType,
 						status: "in_progress",

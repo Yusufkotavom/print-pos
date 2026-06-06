@@ -17,7 +17,7 @@ interface POSPaymentFlowProps {
 	cancelLabel: string;
 	queuedMessage: string;
 	onOpenChange: (open: boolean) => void;
-	onQueueChange: (queue: QueuedPOSOrder[]) => void;
+	onQueueOrder: (queueItem: QueuedPOSOrder) => Promise<void>;
 	onClearDraft: () => void;
 	onSubmitOrder: (payload: {
 		clientOrderId: string;
@@ -28,8 +28,6 @@ interface POSPaymentFlowProps {
 		paidAmount: number;
 		total: number;
 	}) => void;
-	readQueue: () => QueuedPOSOrder[];
-	writeQueue: (queue: QueuedPOSOrder[]) => void;
 }
 
 export function POSPaymentFlow({
@@ -45,11 +43,9 @@ export function POSPaymentFlow({
 	cancelLabel,
 	queuedMessage,
 	onOpenChange,
-	onQueueChange,
+	onQueueOrder,
 	onClearDraft,
 	onSubmitOrder,
-	readQueue,
-	writeQueue,
 }: POSPaymentFlowProps) {
 	return (
 		<PaymentDialog
@@ -67,7 +63,7 @@ export function POSPaymentFlow({
 			locale={locale}
 			paymentMethods={paymentMethods}
 			isPending={isPending}
-			onSubmit={({ paymentMethodId, amount }) => {
+			onSubmit={async ({ paymentMethodId, amount }) => {
 				if (!pendingOrder) return;
 				const queuedOrder: QueuedPOSOrder = {
 					...pendingOrder,
@@ -76,21 +72,11 @@ export function POSPaymentFlow({
 					createdAt: new Date().toISOString(),
 					status: "pending",
 				};
-				const enqueueOrder = () => {
-					const queue = [
-						...readQueue().filter(
-							(item) => item.clientOrderId !== queuedOrder.clientOrderId,
-						),
-						queuedOrder,
-					];
-					writeQueue(queue);
-					onQueueChange(queue);
+				if (!navigator.onLine) {
+					await onQueueOrder(queuedOrder);
 					onOpenChange(false);
 					onClearDraft();
 					toast.success(queuedMessage);
-				};
-				if (!navigator.onLine) {
-					enqueueOrder();
 					return;
 				}
 				onSubmitOrder({

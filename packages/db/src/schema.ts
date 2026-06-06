@@ -35,6 +35,12 @@ export const products = pgTable("products", {
 		.notNull(),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
 	category: varchar("category", { length: 50 }),
+	image_url: text("image_url"),
+	image_key: varchar("image_key", { length: 255 }),
+	image_width: integer("image_width"),
+	image_height: integer("image_height"),
+	image_blurhash: text("image_blurhash"),
+	image_updated_at: timestamp("image_updated_at"),
 	created_at: timestamp("created_at").defaultNow(),
 });
 
@@ -89,6 +95,9 @@ export const orderItems = pgTable("order_items", {
 
 export const serviceOrders = pgTable("service_orders", {
 	id: serial("id").primaryKey(),
+	client_service_order_id: varchar("client_service_order_id", {
+		length: 64,
+	}).unique(),
 	service_number: varchar("service_number", { length: 32 }),
 	customer_id: integer("customer_id").references(() => customers.id),
 	service_type: varchar("service_type", { length: 32 })

@@ -18,6 +18,12 @@ const productSchema = z.object({
 	wholesale_min_qty: z.number().nullable(),
 	product_type: z.string(),
 	category: z.string().nullable(),
+	image_url: z.string().nullable(),
+	image_key: z.string().nullable(),
+	image_width: z.number().nullable(),
+	image_height: z.number().nullable(),
+	image_blurhash: z.string().nullable(),
+	image_updated_at: z.date().nullable(),
 	user_uid: z.string(),
 	created_at: z.date().nullable(),
 });
@@ -63,6 +69,11 @@ export const productsRouter = router({
 				category: z.string().optional(),
 				wholesale_price: z.number().int().optional(),
 				wholesale_min_qty: z.number().int().optional(),
+				image_url: z.string().optional(),
+				image_key: z.string().optional(),
+				image_width: z.number().int().optional(),
+				image_height: z.number().int().optional(),
+				image_blurhash: z.string().optional(),
 			}),
 		)
 		.output(productSchema)
@@ -71,6 +82,7 @@ export const productsRouter = router({
 				.insert(products)
 				.values({
 					...input,
+					image_updated_at: input.image_url ? new Date() : undefined,
 					user_uid: ctx.user.id,
 				})
 				.returning();
@@ -201,6 +213,11 @@ export const productsRouter = router({
 				category: z.string().optional(),
 				wholesale_price: z.number().int().optional(),
 				wholesale_min_qty: z.number().int().optional(),
+				image_url: z.string().optional(),
+				image_key: z.string().optional(),
+				image_width: z.number().int().optional(),
+				image_height: z.number().int().optional(),
+				image_blurhash: z.string().optional(),
 			}),
 		)
 		.output(productSchema)
@@ -208,7 +225,14 @@ export const productsRouter = router({
 			const { id, ...data } = input;
 			const [updated] = await db
 				.update(products)
-				.set({ ...data, user_uid: ctx.user.id })
+				.set({
+					...data,
+					image_updated_at:
+						data.image_url !== undefined || data.image_key !== undefined
+							? new Date()
+							: undefined,
+					user_uid: ctx.user.id,
+				})
 				.where(and(eq(products.id, id), eq(products.user_uid, ctx.user.id)))
 				.returning();
 			return updated;

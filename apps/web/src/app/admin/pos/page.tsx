@@ -37,51 +37,35 @@ import type {
 	SuccessPOSOrder,
 } from "@/components/pos-types";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import { usePOSLocalFirst } from "@/hooks/use-pos-local-first";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
 
 type POSProduct = POSProductItem;
 type SuccessOrder = SuccessPOSOrder;
 
-const POS_DRAFT_KEY = "finopenpos:pos:draft";
-const POS_QUEUE_KEY = "finopenpos:pos:queue";
-
 function createClientOrderId() {
 	return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
-}
-
-function readPOSQueue() {
-	if (typeof window === "undefined") return [] as QueuedPOSOrder[];
-	try {
-		return JSON.parse(
-			localStorage.getItem(POS_QUEUE_KEY) ?? "[]",
-		) as QueuedPOSOrder[];
-	} catch {
-		return [];
-	}
-}
-
-function writePOSQueue(queue: QueuedPOSOrder[]) {
-	localStorage.setItem(POS_QUEUE_KEY, JSON.stringify(queue));
 }
 
 export default function POSPage() {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
-	const { data: products = [], isLoading: loadingProducts } = useQuery(
+	const { data: remoteProducts = [], isLoading: loadingProducts } = useQuery(
 		trpc.products.list.queryOptions(),
 	);
-	const { data: customers = [], isLoading: loadingCustomers } = useQuery(
+	const { data: remoteCustomers = [], isLoading: loadingCustomers } = useQuery(
 		trpc.customers.list.queryOptions(),
 	);
-	const { data: paymentMethods = [], isLoading: loadingMethods } = useQuery(
-		trpc.paymentMethods.list.queryOptions(),
-	);
+	const { data: remotePaymentMethods = [], isLoading: loadingMethods } =
+		useQuery(trpc.paymentMethods.list.queryOptions());
 	const t = useTranslations("pos");
 	const tc = useTranslations("common");
 	const tOrders = useTranslations("orders");
 	const tCustomers = useTranslations("customers");
 	const locale = useLocale();
+	const isOnline = useOnlineStatus();
 
 	const customerFormSchema = z.object({
 		name: z.string().min(1, tCustomers("nameRequired")),
@@ -93,15 +77,10 @@ export default function POSPage() {
 		address: z.string(),
 	});
 
-	const loading = loadingProducts || loadingCustomers || loadingMethods;
-
 	const [successOrder, setSuccessOrder] = useState<SuccessOrder | null>(null);
 	const [pendingPaymentOrder, setPendingPaymentOrder] =
 		useState<PendingPOSOrder | null>(null);
-	const [queueCount, setQueueCount] = useState(0);
 	const saleDetailsRef = useRef<HTMLDivElement | null>(null);
-	const syncedOrderIdsRef = useRef<Set<string>>(new Set());
-	const syncInFlightRef = useRef(false);
 
 	const { data: companySettings } = useQuery(
 		trpc.companySettings.get.queryOptions(),
@@ -109,14 +88,9 @@ export default function POSPage() {
 
 	const createOrderMutation = useMutation(
 		trpc.orders.create.mutationOptions({
-			onSuccess: (order, variables) => {
+			onSuccess: async (order, variables) => {
 				if (variables.clientOrderId) {
-					syncedOrderIdsRef.current.add(variables.clientOrderId);
-					const queue = readPOSQueue().filter(
-						(item) => item.clientOrderId !== variables.clientOrderId,
-					);
-					writePOSQueue(queue);
-					setQueueCount(queue.length);
+					await markOrderSynced(variables.clientOrderId, order.id);
 				}
 				queryClient.invalidateQueries(trpc.orders.list.queryOptions());
 				queryClient.invalidateQueries(trpc.products.list.queryOptions());
@@ -146,17 +120,12 @@ export default function POSPage() {
 					setSelectedProducts([]);
 					setSelectedCustomer(null);
 					setOrderNote("");
+					await clearPOSDraft();
 				}
 			},
-			onError: (err, variables) => {
+			onError: async (err, variables) => {
 				if (variables.clientOrderId) {
-					const queue = readPOSQueue().map((item) =>
-						item.clientOrderId === variables.clientOrderId
-							? { ...item, status: "failed" as const, error: err.message }
-							: item,
-					);
-					writePOSQueue(queue);
-					setQueueCount(queue.length);
+					await markOrderFailed(variables.clientOrderId, err.message);
 				}
 				toast.error(err.message || tOrders("createError"));
 			},
@@ -189,6 +158,38 @@ export default function POSPage() {
 	const [orderNote, setOrderNote] = useState("");
 	const [isCartOpen, setIsCartOpen] = useState(false);
 	const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false);
+	const {
+		products,
+		customers,
+		paymentMethods,
+		queueCount,
+		loadDraft,
+		savePOSDraft,
+		clearPOSDraft,
+		queueOrder,
+		markOrderSynced,
+		markOrderFailed,
+		syncQueuedOrders,
+	} = usePOSLocalFirst({
+		remoteProducts,
+		remoteCustomers,
+		remotePaymentMethods,
+		createOrder: async (payload: {
+			clientOrderId?: string;
+			customerId: number;
+			products: { id: number; quantity: number; price: number }[];
+			note: string;
+			paymentMethodId: number;
+			paidAmount: number;
+			total: number;
+		}) => {
+			await createOrderMutation.mutateAsync(payload);
+		},
+	});
+	const loading =
+		(loadingProducts && products.length === 0) ||
+		(loadingCustomers && customers.length === 0) ||
+		(loadingMethods && paymentMethods.length === 0);
 	const selectedCustomerPhone = selectedCustomer
 		? customers.find((customer) => customer.id === selectedCustomer.id)?.phone
 		: undefined;
@@ -199,68 +200,24 @@ export default function POSPage() {
 		: "";
 
 	useEffect(() => {
-		if (typeof window === "undefined") return;
-		try {
-			const saved = JSON.parse(
-				localStorage.getItem(POS_DRAFT_KEY) ?? "null",
-			) as POSDraft | null;
+		void (async () => {
+			const saved = await loadDraft();
 			if (saved) {
 				setSelectedProducts(saved.items ?? []);
 				setSelectedCustomer(saved.customer ?? null);
 				setOrderNote(saved.note ?? "");
 			}
-		} catch {}
-		setQueueCount(readPOSQueue().length);
-	}, []);
+		})();
+	}, [loadDraft]);
 
 	useEffect(() => {
-		if (typeof window === "undefined") return;
 		const draft: POSDraft = {
 			items: selectedProducts,
 			customer: selectedCustomer,
 			note: orderNote,
 		};
-		localStorage.setItem(POS_DRAFT_KEY, JSON.stringify(draft));
-	}, [selectedProducts, selectedCustomer, orderNote]);
-
-	const syncQueuedOrders = useCallback(async () => {
-		if (typeof window === "undefined") return;
-		if (syncInFlightRef.current || !navigator.onLine) return;
-		const queue = readPOSQueue();
-		if (queue.length === 0) {
-			setQueueCount(0);
-			return;
-		}
-		syncInFlightRef.current = true;
-		try {
-			for (const queued of queue) {
-				if (syncedOrderIdsRef.current.has(queued.clientOrderId)) continue;
-				const nextQueue = readPOSQueue().map((item) =>
-					item.clientOrderId === queued.clientOrderId
-						? { ...item, status: "syncing" as const, error: undefined }
-						: item,
-				);
-				writePOSQueue(nextQueue);
-				setQueueCount(nextQueue.length);
-				await createOrderMutation.mutateAsync({
-					clientOrderId: queued.clientOrderId,
-					customerId: queued.customer.id,
-					products: queued.items.map((item) => ({
-						id: item.id,
-						quantity: item.quantity,
-						price: item.price,
-					})),
-					note: queued.note,
-					paymentMethodId: queued.paymentMethodId,
-					paidAmount: queued.paidAmount,
-					total: queued.total,
-				});
-			}
-		} finally {
-			syncInFlightRef.current = false;
-			setQueueCount(readPOSQueue().length);
-		}
-	}, [createOrderMutation]);
+		void savePOSDraft(draft);
+	}, [selectedProducts, selectedCustomer, orderNote, savePOSDraft]);
 
 	useEffect(() => {
 		void syncQueuedOrders();
@@ -497,9 +454,22 @@ export default function POSPage() {
 
 	return (
 		<div className="mx-auto w-full max-w-7xl pb-24 lg:pb-0">
+			{!isOnline && (
+				<div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-blue-900 text-sm">
+					Offline mode. Data disimpan lokal dulu.
+				</div>
+			)}
 			{queueCount > 0 && (
-				<div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 text-sm">
-					{t("queuedOrdersNotice", { count: queueCount })}
+				<div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 text-sm">
+					<span>{t("queuedOrdersNotice", { count: queueCount })}</span>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => void syncQueuedOrders()}
+					>
+						Sync now
+					</Button>
 				</div>
 			)}
 			<div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
@@ -710,16 +680,17 @@ export default function POSPage() {
 				onOpenChange={(open) => {
 					if (!open) setPendingPaymentOrder(null);
 				}}
-				onQueueChange={(queue) => setQueueCount(queue.length)}
+				onQueueOrder={queueOrder}
 				onClearDraft={() => {
 					setSelectedProducts([]);
 					setSelectedCustomer(null);
 					setOrderNote("");
+					void clearPOSDraft();
 				}}
 				onSubmitOrder={(payload) => {
 					const draft = pendingPaymentOrder;
 					createOrderMutation.mutate(payload, {
-						onError: () => {
+						onError: async () => {
 							if (!draft) return;
 							const queuedOrder: QueuedPOSOrder = {
 								...draft,
@@ -728,24 +699,16 @@ export default function POSPage() {
 								createdAt: new Date().toISOString(),
 								status: "pending",
 							};
-							const queue = [
-								...readPOSQueue().filter(
-									(item) => item.clientOrderId !== queuedOrder.clientOrderId,
-								),
-								queuedOrder,
-							];
-							writePOSQueue(queue);
-							setQueueCount(queue.length);
+							await queueOrder(queuedOrder);
 							setPendingPaymentOrder(null);
 							setSelectedProducts([]);
 							setSelectedCustomer(null);
 							setOrderNote("");
+							await clearPOSDraft();
 							toast.success(t("orderQueued"));
 						},
 					});
 				}}
-				readQueue={readPOSQueue}
-				writeQueue={writePOSQueue}
 			/>
 
 			<POSSuccessDialog
