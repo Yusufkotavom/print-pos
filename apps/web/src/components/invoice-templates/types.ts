@@ -25,13 +25,11 @@ export interface InvoicePDFProps {
 	companySettings?: {
 		company_name: string;
 		trade_name?: string | null;
-		tax_id: string;
-		business_license: string;
-		city_name: string;
-		street: string;
-		street_number: string;
-		district: string;
-		postal_code: string;
+		email?: string | null;
+		phone?: string | null;
+		whatsapp?: string | null;
+		website?: string | null;
+		address?: string | null;
 		invoice_terms?: string | null;
 		invoice_template?: string | null;
 		whatsapp_template?: string | null;

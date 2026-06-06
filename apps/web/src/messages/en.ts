@@ -337,6 +337,10 @@ const messages = {
 		companyInfo: "Company Information",
 		companyName: "Legal Company Name",
 		tradeName: "Brand / Store Name",
+		website: "Website",
+		whatsappNumber: "WhatsApp Number",
+		fullAddressPlaceholder:
+			"Example: Jl. Merdeka No. 10, Gambir, Central Jakarta, DKI Jakarta 10110",
 		taxId: "NPWP",
 		stateTaxId: "NIB / Business License",
 		taxRegime: "Business Type",

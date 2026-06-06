@@ -113,12 +113,12 @@ export function TemplateReceipt({
 					{companySettings?.trade_name && (
 						<Text style={styles.companySub}>{companySettings.trade_name}</Text>
 					)}
-					<Text style={styles.companySub}>
-						{companySettings?.street} No. {companySettings?.street_number}
-					</Text>
-					<Text style={styles.companySub}>
-						{companySettings?.district}, {companySettings?.city_name}
-					</Text>
+					{companySettings?.address && (
+						<Text style={styles.companySub}>{companySettings.address}</Text>
+					)}
+					{companySettings?.phone && (
+						<Text style={styles.companySub}>{companySettings.phone}</Text>
+					)}
 					<Text style={styles.metaText}>
 						{labels.invoice}: #{order.id}
 					</Text>

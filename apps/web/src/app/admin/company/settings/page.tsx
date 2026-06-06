@@ -8,7 +8,6 @@ import {
 	CardTitle,
 } from "@finopenpos/ui/components/card";
 import { FormTextField } from "@finopenpos/ui/components/form-text-field";
-import { Input } from "@finopenpos/ui/components/input";
 import { Label } from "@finopenpos/ui/components/label";
 import {
 	Select,
@@ -31,43 +30,6 @@ import { useTranslations } from "next-intl";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
-
-const PROVINCE_OPTIONS = [
-	{ id: "AC", name: "Aceh" },
-	{ id: "SU", name: "Sumatera Utara" },
-	{ id: "SB", name: "Sumatera Barat" },
-	{ id: "RI", name: "Riau" },
-	{ id: "JA", name: "Jambi" },
-	{ id: "SS", name: "Sumatera Selatan" },
-	{ id: "BE", name: "Bengkulu" },
-	{ id: "LA", name: "Lampung" },
-	{ id: "BB", name: "Kepulauan Bangka Belitung" },
-	{ id: "KR", name: "Kepulauan Riau" },
-	{ id: "JK", name: "DKI Jakarta" },
-	{ id: "JB", name: "Jawa Barat" },
-	{ id: "JT", name: "Jawa Tengah" },
-	{ id: "YO", name: "DI Yogyakarta" },
-	{ id: "JI", name: "Jawa Timur" },
-	{ id: "BT", name: "Banten" },
-	{ id: "BA", name: "Bali" },
-	{ id: "NB", name: "Nusa Tenggara Barat" },
-	{ id: "NT", name: "Nusa Tenggara Timur" },
-	{ id: "KB", name: "Kalimantan Barat" },
-	{ id: "KT", name: "Kalimantan Tengah" },
-	{ id: "KS", name: "Kalimantan Selatan" },
-	{ id: "KI", name: "Kalimantan Timur" },
-	{ id: "KU", name: "Kalimantan Utara" },
-	{ id: "SA", name: "Sulawesi Utara" },
-	{ id: "ST", name: "Sulawesi Tengah" },
-	{ id: "SN", name: "Sulawesi Selatan" },
-	{ id: "SG", name: "Sulawesi Tenggara" },
-	{ id: "GO", name: "Gorontalo" },
-	{ id: "SR", name: "Sulawesi Barat" },
-	{ id: "MA", name: "Maluku" },
-	{ id: "MU", name: "Maluku Utara" },
-	{ id: "PA", name: "Papua" },
-	{ id: "PB", name: "Papua Barat" },
-];
 
 const TIMEZONE_OPTIONS = [
 	{ id: "Asia/Jakarta", name: "WIB (Asia/Jakarta)" },
@@ -98,19 +60,13 @@ export default function CompanySettingsPage() {
 		defaultValues: {
 			company_name: settings?.company_name ?? "",
 			trade_name: settings?.trade_name ?? "",
-			tax_id: settings?.tax_id ?? "",
-			business_license: settings?.business_license ?? "",
-			business_type: String(settings?.business_type ?? 1),
+			email: settings?.email ?? "",
+			phone: settings?.phone ?? "",
+			whatsapp: settings?.whatsapp ?? "",
+			website: settings?.website ?? "",
+			address: settings?.address ?? "",
 			currency: settings?.currency ?? "IDR",
 			timezone: settings?.timezone ?? "Asia/Jakarta",
-			province_code: settings?.province_code ?? "JK",
-			city_code: settings?.city_code ?? "",
-			city_name: settings?.city_name ?? "",
-			street: settings?.street ?? "",
-			street_number: settings?.street_number ?? "",
-			district: settings?.district ?? "",
-			postal_code: settings?.postal_code ?? "",
-			address_detail: settings?.address_detail ?? "",
 			receipt_header: settings?.receipt_header ?? "",
 			receipt_footer: settings?.receipt_footer ?? "",
 			invoice_terms: settings?.invoice_terms ?? "",
@@ -123,19 +79,13 @@ export default function CompanySettingsPage() {
 			upsertMutation.mutate({
 				company_name: value.company_name,
 				trade_name: value.trade_name || undefined,
-				tax_id: value.tax_id,
-				business_license: value.business_license,
-				business_type: Number(value.business_type),
+				email: value.email || undefined,
+				phone: value.phone || undefined,
+				whatsapp: value.whatsapp || undefined,
+				website: value.website || undefined,
+				address: value.address || undefined,
 				currency: value.currency,
 				timezone: value.timezone,
-				province_code: value.province_code,
-				city_code: value.city_code,
-				city_name: value.city_name,
-				street: value.street,
-				street_number: value.street_number,
-				district: value.district,
-				postal_code: value.postal_code,
-				address_detail: value.address_detail || undefined,
 				receipt_header: value.receipt_header || undefined,
 				receipt_footer: value.receipt_footer || undefined,
 				invoice_terms: value.invoice_terms || undefined,
@@ -147,22 +97,15 @@ export default function CompanySettingsPage() {
 
 	useEffect(() => {
 		if (!settings) return;
-
 		form.setFieldValue("company_name", settings.company_name ?? "");
 		form.setFieldValue("trade_name", settings.trade_name ?? "");
-		form.setFieldValue("tax_id", settings.tax_id ?? "");
-		form.setFieldValue("business_license", settings.business_license ?? "");
-		form.setFieldValue("business_type", String(settings.business_type ?? 1));
+		form.setFieldValue("email", settings.email ?? "");
+		form.setFieldValue("phone", settings.phone ?? "");
+		form.setFieldValue("whatsapp", settings.whatsapp ?? "");
+		form.setFieldValue("website", settings.website ?? "");
+		form.setFieldValue("address", settings.address ?? "");
 		form.setFieldValue("currency", settings.currency ?? "IDR");
 		form.setFieldValue("timezone", settings.timezone ?? "Asia/Jakarta");
-		form.setFieldValue("province_code", settings.province_code ?? "JK");
-		form.setFieldValue("city_code", settings.city_code ?? "");
-		form.setFieldValue("city_name", settings.city_name ?? "");
-		form.setFieldValue("street", settings.street ?? "");
-		form.setFieldValue("street_number", settings.street_number ?? "");
-		form.setFieldValue("district", settings.district ?? "");
-		form.setFieldValue("postal_code", settings.postal_code ?? "");
-		form.setFieldValue("address_detail", settings.address_detail ?? "");
 		form.setFieldValue("receipt_header", settings.receipt_header ?? "");
 		form.setFieldValue("receipt_footer", settings.receipt_footer ?? "");
 		form.setFieldValue("invoice_terms", settings.invoice_terms ?? "");
@@ -212,42 +155,41 @@ export default function CompanySettingsPage() {
 									)}
 								</form.Field>
 							</div>
-							<div className="grid gap-4 sm:grid-cols-3">
-								<form.Field name="tax_id">
+							<div className="grid gap-4 sm:grid-cols-2">
+								<form.Field name="email">
 									{(field) => (
-										<FormTextField field={field} label={t("taxId")} />
+										<FormTextField field={field} label={tc("email")} />
 									)}
 								</form.Field>
-								<form.Field name="business_license">
+								<form.Field name="website">
 									{(field) => (
-										<FormTextField field={field} label={t("stateTaxId")} />
+										<FormTextField field={field} label={t("website")} />
 									)}
 								</form.Field>
-								<form.Field name="business_type">
+								<form.Field name="phone">
 									{(field) => (
-										<div className="space-y-2">
-											<Label>{t("taxRegime")}</Label>
-											<Select
-												value={field.state.value}
-												onValueChange={field.handleChange}
-											>
-												<SelectTrigger>
-													<SelectValue />
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value="1">
-														{t("taxRegimeUmkm")}
-													</SelectItem>
-													<SelectItem value="2">{t("taxRegimePkP")}</SelectItem>
-													<SelectItem value="3">
-														{t("taxRegimeEnterprise")}
-													</SelectItem>
-												</SelectContent>
-											</Select>
-										</div>
+										<FormTextField field={field} label={tc("phone")} />
+									)}
+								</form.Field>
+								<form.Field name="whatsapp">
+									{(field) => (
+										<FormTextField field={field} label={t("whatsappNumber")} />
 									)}
 								</form.Field>
 							</div>
+							<form.Field name="address">
+								{(field) => (
+									<div className="space-y-2">
+										<Label>{t("address")}</Label>
+										<Textarea
+											value={field.state.value}
+											onChange={(e) => field.handleChange(e.target.value)}
+											rows={4}
+											placeholder={t("fullAddressPlaceholder")}
+										/>
+									</div>
+								)}
+							</form.Field>
 						</CardContent>
 					</Card>
 
@@ -296,81 +238,6 @@ export default function CompanySettingsPage() {
 											</SelectContent>
 										</Select>
 									</div>
-								)}
-							</form.Field>
-						</CardContent>
-					</Card>
-
-					<Card>
-						<CardHeader>
-							<CardTitle>{t("address")}</CardTitle>
-						</CardHeader>
-						<CardContent className="grid gap-4">
-							<div className="grid gap-4 sm:grid-cols-3">
-								<form.Field name="postal_code">
-									{(field) => (
-										<FormTextField field={field} label={t("zipCode")} />
-									)}
-								</form.Field>
-								<form.Field name="province_code">
-									{(field) => (
-										<div className="space-y-2">
-											<Label>{t("stateCode")}</Label>
-											<Select
-												value={field.state.value}
-												onValueChange={field.handleChange}
-											>
-												<SelectTrigger>
-													<SelectValue />
-												</SelectTrigger>
-												<SelectContent>
-													{PROVINCE_OPTIONS.map((province) => (
-														<SelectItem key={province.id} value={province.id}>
-															{province.name}
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
-										</div>
-									)}
-								</form.Field>
-								<form.Field name="city_name">
-									{(field) => (
-										<FormTextField field={field} label={t("cityName")} />
-									)}
-								</form.Field>
-							</div>
-							<form.Field name="city_code">
-								{(field) => (
-									<FormTextField field={field} label={t("cityCode")} />
-								)}
-							</form.Field>
-							<div className="grid gap-4 sm:grid-cols-4">
-								<form.Field name="street">
-									{(field) => (
-										<div className="space-y-2 sm:col-span-2">
-											<Label>{t("street")}</Label>
-											<Input
-												value={field.state.value}
-												onChange={(e) => field.handleChange(e.target.value)}
-											/>
-										</div>
-									)}
-								</form.Field>
-								<form.Field name="street_number">
-									{(field) => (
-										<FormTextField field={field} label={t("streetNumber")} />
-									)}
-								</form.Field>
-								<form.Field name="district">
-									{(field) => (
-										<FormTextField field={field} label={t("district")} />
-									)}
-								</form.Field>
-							</div>
-							<form.Field name="address_detail">
-								{(field) => (
-									<FormTextField field={field} label={t("addressComplement")} />
 								)}
 							</form.Field>
 						</CardContent>
@@ -439,7 +306,6 @@ export default function CompanySettingsPage() {
 													</SelectItem>
 												</SelectContent>
 											</Select>
-
 											<Button
 												variant="outline"
 												type="button"

@@ -341,6 +341,10 @@ const messages: Messages = {
 		companyInfo: "Informasi Perusahaan",
 		companyName: "Nama Legal Perusahaan",
 		tradeName: "Nama Brand / Toko",
+		website: "Website",
+		whatsappNumber: "No. WhatsApp",
+		fullAddressPlaceholder:
+			"Contoh: Jl. Merdeka No. 10, Gambir, Jakarta Pusat, DKI Jakarta 10110",
 		taxId: "NPWP",
 		stateTaxId: "NIB / Izin Usaha",
 		taxRegime: "Jenis Usaha",

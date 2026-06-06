@@ -40,13 +40,12 @@ export async function GET(request: Request) {
 	const mockCompanySettings = {
 		company_name: "Toko Super Maju (Contoh)",
 		trade_name: "Super Maju Group",
-		tax_id: "01.234.567.8-901.234",
-		business_license: "NIB: 1234567890",
-		city_name: "Jakarta Selatan",
-		street: "Jl. Jendral Sudirman",
-		street_number: "Kav 1",
-		district: "Kebayoran Baru",
-		postal_code: "12190",
+		email: "halo@supermaju.test",
+		phone: "021-12345678",
+		whatsapp: "081234567890",
+		website: "https://supermaju.test",
+		address:
+			"Jl. Jendral Sudirman Kav 1, Kebayoran Baru, Jakarta Selatan 12190",
 		invoice_terms:
 			"Ini adalah contoh catatan atau syarat ketentuan yang akan muncul di faktur/invoice pelanggan Anda. Pembayaran harap dilakukan tepat waktu.",
 		invoice_template: template,

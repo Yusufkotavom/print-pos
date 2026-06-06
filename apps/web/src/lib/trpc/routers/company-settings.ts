@@ -9,19 +9,13 @@ const companySettingsSchema = z.object({
 	user_uid: z.string(),
 	company_name: z.string(),
 	trade_name: z.string().nullable(),
-	tax_id: z.string(),
-	business_license: z.string(),
-	business_type: z.number(),
+	email: z.string().nullable(),
+	phone: z.string().nullable(),
+	whatsapp: z.string().nullable(),
+	website: z.string().nullable(),
+	address: z.string().nullable(),
 	currency: z.string(),
 	timezone: z.string(),
-	province_code: z.string(),
-	city_code: z.string(),
-	city_name: z.string(),
-	street: z.string(),
-	street_number: z.string(),
-	district: z.string(),
-	postal_code: z.string(),
-	address_detail: z.string().nullable(),
 	receipt_header: z.string().nullable(),
 	receipt_footer: z.string().nullable(),
 	invoice_terms: z.string().nullable(),
@@ -66,19 +60,13 @@ export const companySettingsRouter = router({
 			z.object({
 				company_name: z.string().min(1),
 				trade_name: z.string().optional(),
-				tax_id: z.string().min(8).max(20),
-				business_license: z.string().min(1).max(20),
-				business_type: z.number().int().min(1).max(3),
+				email: z.string().optional(),
+				phone: z.string().optional(),
+				whatsapp: z.string().optional(),
+				website: z.string().optional(),
+				address: z.string().optional(),
 				currency: z.string().length(3),
 				timezone: z.string().min(1),
-				province_code: z.string().length(2),
-				city_code: z.string().min(1).max(20),
-				city_name: z.string().min(1),
-				street: z.string().min(1),
-				street_number: z.string().min(1),
-				district: z.string().min(1),
-				postal_code: z.string().min(4).max(10),
-				address_detail: z.string().optional(),
 				receipt_header: z.string().optional(),
 				receipt_footer: z.string().optional(),
 				invoice_terms: z.string().optional(),
@@ -88,6 +76,12 @@ export const companySettingsRouter = router({
 		)
 		.output(z.object({ success: z.boolean(), id: z.number() }))
 		.mutation(async ({ ctx, input }) => {
+			const values = {
+				...input,
+				currency: input.currency ?? "IDR",
+				timezone: input.timezone ?? "Asia/Jakarta",
+			};
+
 			const existing = await db
 				.select({ id: companySettings.id })
 				.from(companySettings)
@@ -97,7 +91,7 @@ export const companySettingsRouter = router({
 			if (existing.length > 0) {
 				await db
 					.update(companySettings)
-					.set({ ...input, updated_at: new Date() })
+					.set({ ...values, updated_at: new Date() })
 					.where(eq(companySettings.user_uid, ctx.user.id));
 
 				return { success: true, id: existing[0].id };
@@ -105,7 +99,7 @@ export const companySettingsRouter = router({
 
 			const [row] = await db
 				.insert(companySettings)
-				.values({ user_uid: ctx.user.id, ...input })
+				.values({ user_uid: ctx.user.id, ...values })
 				.returning({ id: companySettings.id });
 
 			return { success: true, id: row.id };

@@ -229,10 +229,11 @@ export function TemplateStandard({
 								{companySettings.trade_name}
 							</Text>
 						)}
-						{companySettings?.tax_id && (
-							<Text style={styles.companySub}>
-								NPWP: {companySettings.tax_id}
-							</Text>
+						{companySettings?.address && (
+							<Text style={styles.companySub}>{companySettings.address}</Text>
+						)}
+						{companySettings?.phone && (
+							<Text style={styles.companySub}>{companySettings.phone}</Text>
 						)}
 					</View>
 					<View style={styles.invoiceMeta}>
@@ -274,18 +275,20 @@ export function TemplateStandard({
 						<Text style={styles.sectionTitle}>{labels.companyDetails}</Text>
 						{companySettings ? (
 							<>
-								<Text style={styles.detailText}>
-									{companySettings.street} No. {companySettings.street_number}
-								</Text>
-								<Text style={styles.detailText}>
-									{companySettings.district}, {companySettings.city_name}
-								</Text>
-								<Text style={styles.detailText}>
-									Kode Pos: {companySettings.postal_code}
-								</Text>
-								{companySettings.business_license && (
+								{companySettings.address && (
 									<Text style={styles.detailText}>
-										Izin: {companySettings.business_license}
+										{companySettings.address}
+									</Text>
+								)}
+								{companySettings.phone && (
+									<Text style={styles.detailText}>{companySettings.phone}</Text>
+								)}
+								{companySettings.email && (
+									<Text style={styles.detailText}>{companySettings.email}</Text>
+								)}
+								{companySettings.website && (
+									<Text style={styles.detailText}>
+										{companySettings.website}
 									</Text>
 								)}
 							</>

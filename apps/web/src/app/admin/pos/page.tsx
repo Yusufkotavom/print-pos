@@ -1057,13 +1057,8 @@ export default function POSPage() {
 						{companySettings?.trade_name && (
 							<p className="text-[9px]">{companySettings.trade_name}</p>
 						)}
-						<p>
-							{companySettings?.street} No. {companySettings?.street_number}
-						</p>
-						<p>
-							{companySettings?.district}, {companySettings?.city_name}
-						</p>
-						{companySettings?.tax_id && <p>NPWP: {companySettings.tax_id}</p>}
+						{companySettings?.address && <p>{companySettings.address}</p>}
+						{companySettings?.phone && <p>{companySettings.phone}</p>}
 						{companySettings?.receipt_header && (
 							<p className="mt-1 border-t border-dashed pt-1 text-[9px] italic">
 								{companySettings.receipt_header}
