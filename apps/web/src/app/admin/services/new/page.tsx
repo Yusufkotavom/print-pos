@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@finopenpos/ui/components/button";
-import { Calendar } from "@finopenpos/ui/components/calendar";
 import {
 	Card,
 	CardContent,
@@ -15,22 +14,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@finopenpos/ui/components/dialog";
-import { Label } from "@finopenpos/ui/components/label";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@finopenpos/ui/components/popover";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@finopenpos/ui/components/select";
-import { Textarea } from "@finopenpos/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarIcon, PlusCircle } from "lucide-react";
+import { PlusCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
@@ -38,6 +23,7 @@ import { toast } from "sonner";
 import { POSCartPanel } from "@/components/pos-cart-panel";
 import { POSProductCatalog } from "@/components/pos-product-catalog";
 import type { POSProductItem } from "@/components/pos-types";
+import { ServiceOrderFields } from "@/components/service-order-fields";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import {
@@ -57,6 +43,12 @@ import {
 } from "@/lib/local-db/repo";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
+
+function toDateOnly(value: Date | undefined) {
+	return value
+		? new Date(value.getFullYear(), value.getMonth(), value.getDate())
+		: undefined;
+}
 
 export default function NewServicePage() {
 	const trpc = useTRPC();
@@ -126,7 +118,9 @@ export default function NewServicePage() {
 				setInternalNote(draft.internalNote ?? "");
 				setDetailText(draft.detailText ?? "");
 				setEstimatedDoneAt(
-					draft.estimatedDoneAt ? new Date(draft.estimatedDoneAt) : undefined,
+					draft.estimatedDoneAt
+						? toDateOnly(new Date(draft.estimatedDoneAt))
+						: undefined,
 				);
 			}
 		})();
@@ -148,7 +142,7 @@ export default function NewServicePage() {
 			customerNote,
 			internalNote,
 			detailText,
-			estimatedDoneAt: estimatedDoneAt?.toISOString(),
+			estimatedDoneAt: toDateOnly(estimatedDoneAt)?.toISOString(),
 		});
 	}, [
 		selectedProducts,
@@ -254,6 +248,8 @@ export default function NewServicePage() {
 					wholesale_price: product.wholesale_price,
 					wholesale_min_qty: product.wholesale_min_qty,
 					category: product.category ?? "",
+					image_url: product.image_url,
+					product_id: product.id,
 					quantity: 1,
 				},
 			];
@@ -267,7 +263,7 @@ export default function NewServicePage() {
 			clientServiceOrderId: createClientServiceOrderId(),
 			customerId: selectedCustomer.id,
 			serviceType,
-			estimatedDoneAt,
+			estimatedDoneAt: toDateOnly(estimatedDoneAt),
 			customerNote,
 			internalNote,
 			details: { text: detailText },
@@ -392,78 +388,30 @@ export default function NewServicePage() {
 									<PlusCircle className="h-4 w-4" />
 								</Button>
 							</div>
-							<div className="grid gap-4 md:grid-cols-2">
-								<div className="space-y-2">
-									<Label>{t("serviceType")}</Label>
-									<Select value={serviceType} onValueChange={setServiceType}>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{serviceTypes.length ? (
-												serviceTypes.map((item) => (
-													<SelectItem key={item.id} value={item.value}>
-														{item.name}
-													</SelectItem>
-												))
-											) : (
-												<SelectItem value="other">
-													{t("serviceTypeOther")}
-												</SelectItem>
-											)}
-										</SelectContent>
-									</Select>
-								</div>
-								<div className="space-y-2">
-									<Label>{t("estimatedDoneAt")}</Label>
-									<Popover>
-										<PopoverTrigger asChild>
-											<Button
-												type="button"
-												variant="outline"
-												className="w-full justify-start"
-											>
-												<CalendarIcon className="mr-2 h-4 w-4" />
-												{estimatedDoneAt
-													? estimatedDoneAt.toLocaleDateString(locale)
-													: t("selectDate")}
-											</Button>
-										</PopoverTrigger>
-										<PopoverContent className="w-auto p-0" align="start">
-											<Calendar
-												mode="single"
-												selected={estimatedDoneAt}
-												onSelect={setEstimatedDoneAt}
-											/>
-										</PopoverContent>
-									</Popover>
-								</div>
-							</div>
-							<div className="space-y-2">
-								<Label htmlFor="detail-text">{t("serviceDetails")}</Label>
-								<Textarea
-									id="detail-text"
-									value={detailText}
-									onChange={(event) => setDetailText(event.target.value)}
-									placeholder={t("serviceDetailsPlaceholder")}
-								/>
-							</div>
-							<div className="space-y-2">
-								<Label htmlFor="customer-note">{t("customerNote")}</Label>
-								<Textarea
-									id="customer-note"
-									value={customerNote}
-									onChange={(event) => setCustomerNote(event.target.value)}
-								/>
-							</div>
-							<div className="space-y-2">
-								<Label htmlFor="internal-note">{t("internalNote")}</Label>
-								<Textarea
-									id="internal-note"
-									value={internalNote}
-									onChange={(event) => setInternalNote(event.target.value)}
-								/>
-							</div>
+							<ServiceOrderFields
+								serviceTypes={serviceTypes}
+								serviceType={serviceType}
+								estimatedDoneAt={estimatedDoneAt}
+								detailText={detailText}
+								customerNote={customerNote}
+								internalNote={internalNote}
+								locale={locale}
+								labels={{
+									serviceType: t("serviceType"),
+									estimatedDoneAt: t("estimatedDoneAt"),
+									selectDate: t("selectDate"),
+									serviceTypeOther: t("serviceTypeOther"),
+									serviceDetails: t("serviceDetails"),
+									serviceDetailsPlaceholder: t("serviceDetailsPlaceholder"),
+									customerNote: t("customerNote"),
+									internalNote: t("internalNote"),
+								}}
+								onServiceTypeChange={setServiceType}
+								onEstimatedDoneAtChange={setEstimatedDoneAt}
+								onDetailTextChange={setDetailText}
+								onCustomerNoteChange={setCustomerNote}
+								onInternalNoteChange={setInternalNote}
+							/>
 						</CardContent>
 					</Card>
 

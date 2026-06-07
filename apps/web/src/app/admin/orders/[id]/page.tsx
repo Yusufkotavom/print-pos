@@ -230,33 +230,25 @@ export default function OrderDetailPage({
 
 	const handleOpenEdit = () => {
 		setEditItems(
-			order.orderItems.map((item) => ({
-				id: item.product_id ?? item.id,
-				name: item.item_name || item.product?.name || `#${item.product_id}`,
-				price: item.price,
-				in_stock: item.product_id
-					? (products.find((product) => product.id === item.product_id)
-							?.in_stock ?? 0)
-					: 0,
-				track_stock: item.product_id
-					? (products.find((product) => product.id === item.product_id)
-							?.track_stock ?? false)
-					: false,
-				product_type: item.product?.product_type ?? item.item_type ?? "product",
-				wholesale_price: item.product_id
-					? (products.find((product) => product.id === item.product_id)
-							?.wholesale_price ?? null)
-					: null,
-				wholesale_min_qty: item.product_id
-					? (products.find((product) => product.id === item.product_id)
-							?.wholesale_min_qty ?? null)
-					: null,
-				category: item.product_id
-					? (products.find((product) => product.id === item.product_id)
-							?.category ?? "")
-					: "",
-				quantity: item.quantity,
-			})),
+			order.orderItems.map((item) => {
+				const product = item.product_id
+					? products.find((entry) => entry.id === item.product_id)
+					: undefined;
+				return {
+					id: item.product_id ?? item.id,
+					product_id: item.product_id,
+					name: item.item_name || item.product?.name || `#${item.product_id}`,
+					price: item.price,
+					in_stock: product?.in_stock ?? 0,
+					track_stock: product?.track_stock ?? false,
+					product_type: product?.product_type ?? item.item_type ?? "product",
+					wholesale_price: product?.wholesale_price ?? null,
+					wholesale_min_qty: product?.wholesale_min_qty ?? null,
+					category: product?.category ?? "",
+					image_url: product?.image_url ?? item.product?.image_url ?? null,
+					quantity: item.quantity,
+				};
+			}),
 		);
 		setEditNote(order.note ?? "");
 		setEditOpen(true);
@@ -556,6 +548,8 @@ export default function OrderDetailPage({
 												wholesale_price: product.wholesale_price,
 												wholesale_min_qty: product.wholesale_min_qty,
 												category: product.category ?? "",
+												image_url: product.image_url,
+												product_id: product.id,
 												quantity: 1,
 											},
 										];

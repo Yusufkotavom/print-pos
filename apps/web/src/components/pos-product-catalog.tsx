@@ -24,6 +24,7 @@ type ProductItem = {
 	name: string;
 	price: number;
 	category?: string | null;
+	image_url?: string | null;
 	in_stock: number;
 	track_stock: boolean;
 	product_type: string;
@@ -146,9 +147,17 @@ export function POSProductCatalog({
 										className={`gap-3 ${viewMode === "grid" ? "flex flex-col" : "flex items-center"}`}
 									>
 										<div
-											className={`flex shrink-0 items-center justify-center rounded-lg bg-muted ${viewMode === "grid" ? "h-20 w-full" : "h-12 w-12"}`}
+											className={`flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted ${viewMode === "grid" ? "h-20 w-full" : "h-12 w-12"}`}
 										>
-											<PackageIcon className="h-5 w-5 text-muted-foreground md:h-6 md:w-6" />
+											{product.image_url ? (
+												<img
+													src={product.image_url}
+													alt={product.name}
+													className="h-full w-full object-cover"
+												/>
+											) : (
+												<PackageIcon className="h-5 w-5 text-muted-foreground md:h-6 md:w-6" />
+											)}
 										</div>
 										<div className="min-w-0 flex-1">
 											<div className="flex items-start justify-between gap-2">

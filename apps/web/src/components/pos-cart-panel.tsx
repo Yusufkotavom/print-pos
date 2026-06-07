@@ -9,7 +9,13 @@ import {
 } from "@finopenpos/ui/components/card";
 import { Label } from "@finopenpos/ui/components/label";
 import { Textarea } from "@finopenpos/ui/components/textarea";
-import { Loader2Icon, MinusIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import {
+	Loader2Icon,
+	MinusIcon,
+	PackageIcon,
+	PlusIcon,
+	Trash2Icon,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { FormattedNumberInput } from "@/components/formatted-number-input";
 import { formatCurrency } from "@/lib/utils";
@@ -21,6 +27,8 @@ type POSCartItem = {
 	in_stock: number;
 	track_stock: boolean;
 	product_type: string;
+	image_url?: string | null;
+	product_id?: number | null;
 	quantity: number;
 };
 
@@ -29,6 +37,7 @@ type ProductSource = {
 	in_stock: number;
 	track_stock: boolean;
 	product_type: string;
+	image_url?: string | null;
 };
 
 interface POSCartPanelProps {
@@ -82,16 +91,32 @@ export function POSCartPanel({
 				) : (
 					<div className="space-y-3">
 						{items.map((product) => {
-							const source = products.find((p) => p.id === product.id);
+							const source = products.find(
+								(p) => p.id === (product.product_id ?? product.id),
+							);
+							const imageUrl = source?.image_url ?? product.image_url;
 							return (
 								<div key={product.id} className="rounded-lg border p-3">
 									<div className="flex items-start justify-between gap-3">
-										<div className="min-w-0">
-											<div className="truncate font-medium text-sm">
-												{product.name}
+										<div className="flex min-w-0 items-start gap-3">
+											<div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+												{imageUrl ? (
+													<img
+														src={imageUrl}
+														alt={product.name}
+														className="h-full w-full object-cover"
+													/>
+												) : (
+													<PackageIcon className="h-4 w-4 text-muted-foreground" />
+												)}
 											</div>
-											<div className="text-muted-foreground text-xs">
-												{formatCurrency(product.price, locale)}
+											<div className="min-w-0">
+												<div className="truncate font-medium text-sm">
+													{product.name}
+												</div>
+												<div className="text-muted-foreground text-xs">
+													{formatCurrency(product.price, locale)}
+												</div>
 											</div>
 										</div>
 										<Button

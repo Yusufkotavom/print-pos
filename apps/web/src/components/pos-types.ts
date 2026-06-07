@@ -8,6 +8,8 @@ export type POSProductItem = {
 	wholesale_price: number | null;
 	wholesale_min_qty: number | null;
 	category: string;
+	image_url?: string | null;
+	product_id?: number | null;
 	quantity: number;
 };
 

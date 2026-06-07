@@ -314,6 +314,8 @@ export default function POSPage() {
 						wholesale_price: product.wholesale_price,
 						wholesale_min_qty: product.wholesale_min_qty,
 						category: product.category ?? "",
+						image_url: product.image_url,
+						product_id: product.id,
 						quantity: 1,
 					},
 				];

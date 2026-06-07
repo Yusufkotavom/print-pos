@@ -51,6 +51,7 @@ import { PaymentDialog } from "@/components/payment-dialog";
 import { POSCartPanel } from "@/components/pos-cart-panel";
 import { POSProductCatalog } from "@/components/pos-product-catalog";
 import type { POSProductItem } from "@/components/pos-types";
+import { ServiceOrderFields } from "@/components/service-order-fields";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
@@ -71,6 +72,12 @@ function toWhatsappUrl(phone: string | null | undefined, message: string) {
 		: cleanPhone;
 	if (!waPhone) return null;
 	return `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
+}
+
+function toDateOnly(value: Date | undefined) {
+	return value
+		? new Date(value.getFullYear(), value.getMonth(), value.getDate())
+		: undefined;
 }
 
 export default function ServiceDetailPage({
@@ -95,7 +102,9 @@ export default function ServiceDetailPage({
 	>(null);
 	const [statusWhatsappEnabled, setStatusWhatsappEnabled] = useState(true);
 	const [editServiceType, setEditServiceType] = useState("");
-	const [editEstimatedDoneAt, setEditEstimatedDoneAt] = useState("");
+	const [editEstimatedDoneAt, setEditEstimatedDoneAt] = useState<
+		Date | undefined
+	>();
 	const [editCustomerNote, setEditCustomerNote] = useState("");
 	const [editInternalNote, setEditInternalNote] = useState("");
 	const [editDetailText, setEditDetailText] = useState("");
@@ -297,8 +306,8 @@ export default function ServiceDetailPage({
 		setEditServiceType(service.service_type);
 		setEditEstimatedDoneAt(
 			service.estimated_done_at
-				? new Date(service.estimated_done_at).toISOString().slice(0, 16)
-				: "",
+				? toDateOnly(new Date(service.estimated_done_at))
+				: undefined,
 		);
 		setEditCustomerNote(service.customer_note ?? "");
 		setEditInternalNote(service.internal_note ?? "");
@@ -310,6 +319,7 @@ export default function ServiceDetailPage({
 					: undefined;
 				return {
 					id: item.product_id ?? item.id,
+					product_id: item.product_id,
 					name: item.item_name,
 					price: item.price,
 					in_stock: product?.in_stock ?? 0,
@@ -318,6 +328,7 @@ export default function ServiceDetailPage({
 					wholesale_price: product?.wholesale_price ?? null,
 					wholesale_min_qty: product?.wholesale_min_qty ?? null,
 					category: product?.category ?? "",
+					image_url: product?.image_url ?? item.product?.image_url ?? null,
 					quantity: item.quantity,
 				};
 			}),
@@ -626,60 +637,30 @@ export default function ServiceDetailPage({
 					</DialogHeader>
 					<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
 						<div className="space-y-4">
-							<div className="grid gap-4 md:grid-cols-2">
-								<div className="space-y-2">
-									<Label>{t("serviceType")}</Label>
-									<Select
-										value={editServiceType}
-										onValueChange={setEditServiceType}
-									>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{serviceTypes.map((item) => (
-												<SelectItem key={item.id} value={item.value}>
-													{item.name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-								</div>
-								<div className="space-y-2">
-									<Label>{t("estimatedDoneAt")}</Label>
-									<Input
-										type="datetime-local"
-										value={editEstimatedDoneAt}
-										onChange={(event) =>
-											setEditEstimatedDoneAt(event.target.value)
-										}
-									/>
-								</div>
-							</div>
-							<div className="space-y-2">
-								<Label>{t("serviceDetails")}</Label>
-								<Textarea
-									value={editDetailText}
-									onChange={(event) => setEditDetailText(event.target.value)}
-									rows={3}
-								/>
-							</div>
-							<div className="space-y-2">
-								<Label>{t("customerNote")}</Label>
-								<Textarea
-									value={editCustomerNote}
-									onChange={(event) => setEditCustomerNote(event.target.value)}
-									rows={3}
-								/>
-							</div>
-							<div className="space-y-2">
-								<Label>{t("internalNote")}</Label>
-								<Textarea
-									value={editInternalNote}
-									onChange={(event) => setEditInternalNote(event.target.value)}
-									rows={3}
-								/>
-							</div>
+							<ServiceOrderFields
+								serviceTypes={serviceTypes}
+								serviceType={editServiceType}
+								estimatedDoneAt={editEstimatedDoneAt}
+								detailText={editDetailText}
+								customerNote={editCustomerNote}
+								internalNote={editInternalNote}
+								locale={locale}
+								labels={{
+									serviceType: t("serviceType"),
+									estimatedDoneAt: t("estimatedDoneAt"),
+									selectDate: t("selectDate"),
+									serviceTypeOther: t("serviceTypeOther"),
+									serviceDetails: t("serviceDetails"),
+									serviceDetailsPlaceholder: t("serviceDetailsPlaceholder"),
+									customerNote: t("customerNote"),
+									internalNote: t("internalNote"),
+								}}
+								onServiceTypeChange={setEditServiceType}
+								onEstimatedDoneAtChange={setEditEstimatedDoneAt}
+								onDetailTextChange={setEditDetailText}
+								onCustomerNoteChange={setEditCustomerNote}
+								onInternalNoteChange={setEditInternalNote}
+							/>
 							<POSProductCatalog
 								products={filteredProducts}
 								selectedProducts={editItems}
@@ -719,6 +700,8 @@ export default function ServiceDetailPage({
 												wholesale_price: product.wholesale_price,
 												wholesale_min_qty: product.wholesale_min_qty,
 												category: product.category ?? "",
+												image_url: product.image_url,
+												product_id: product.id,
 												quantity: 1,
 											},
 										];
@@ -765,9 +748,7 @@ export default function ServiceDetailPage({
 								updateService.mutate({
 									id: service.id,
 									serviceType: editServiceType,
-									estimatedDoneAt: editEstimatedDoneAt
-										? new Date(editEstimatedDoneAt)
-										: null,
+									estimatedDoneAt: toDateOnly(editEstimatedDoneAt) ?? null,
 									customerNote: editCustomerNote,
 									internalNote: editInternalNote,
 									details: { text: editDetailText },
