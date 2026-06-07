@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, gt } from "drizzle-orm";
 import { headers } from "next/headers";
 import { auth } from "./auth";
 import { db } from "./db";
-import { user } from "./db/schema";
+import { subscriptions, user } from "./db/schema";
 
 export async function getAuthUser() {
 	const session = await auth.api.getSession({
@@ -13,10 +13,6 @@ export async function getAuthUser() {
 		return null;
 	}
 
-	if (session.user.role && session.user.status) {
-		return session.user;
-	}
-
 	const authUser = await db.query.user.findFirst({
 		where: eq(user.id, session.user.id),
 		columns: {
@@ -24,10 +20,28 @@ export async function getAuthUser() {
 			status: true,
 		},
 	});
+	const activeSubscription = await db.query.subscriptions.findFirst({
+		where: and(
+			eq(subscriptions.userId, session.user.id),
+			eq(subscriptions.status, "active"),
+			gt(subscriptions.currentPeriodEnd, new Date()),
+		),
+		orderBy: desc(subscriptions.currentPeriodEnd),
+		columns: { id: true },
+	});
+	const sessionUser = session.user as typeof session.user & {
+		role?: string;
+		status?: string;
+	};
+	const role = authUser?.role ?? sessionUser.role ?? "user";
+	const status = authUser?.status ?? sessionUser.status ?? "active";
+	const isPlatformAdmin = role === "super_admin";
 
 	return {
 		...session.user,
-		role: authUser?.role ?? session.user.role ?? "user",
-		status: authUser?.status ?? session.user.status ?? "active",
+		role,
+		status,
+		isPlatformAdmin,
+		hasActiveSubscription: Boolean(activeSubscription),
 	};
 }

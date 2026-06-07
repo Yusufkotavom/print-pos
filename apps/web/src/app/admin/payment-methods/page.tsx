@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge } from "@finopenpos/ui/components/badge";
 import { Button } from "@finopenpos/ui/components/button";
 import { Card, CardContent, CardHeader } from "@finopenpos/ui/components/card";
 import {
@@ -27,24 +28,52 @@ import {
 	TrashIcon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod/v4";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import {
+	enqueueSyncItem,
+	readCachedPaymentMethods,
+	removeCachedPaymentMethod,
+	replaceCachedPaymentMethods,
+	upsertCachedPaymentMethod,
+} from "@/lib/local-db/repo";
+import { syncReadyQueue } from "@/lib/local-db/sync-engine";
 import { useTRPC } from "@/lib/trpc/client";
-import type { RouterOutputs } from "@/lib/trpc/router";
+import type { RouterInputs, RouterOutputs } from "@/lib/trpc/router";
 
 type PaymentMethod = RouterOutputs["paymentMethods"]["list"][number];
+type PaymentMethodCreateInput = RouterInputs["paymentMethods"]["create"];
+type PaymentMethodUpdateInput = RouterInputs["paymentMethods"]["update"];
 
 export default function PaymentMethodsPage() {
 	const trpc = useTRPC();
 	const {
-		data: methods = [],
+		data: remoteMethods = [],
 		isLoading,
 		error,
 	} = useQuery(trpc.paymentMethods.list.queryOptions());
+	const [cachedMethods, setCachedMethods] = useState<PaymentMethod[]>([]);
+	const hasCachedMethods = cachedMethods.length > 0;
+	const methods =
+		(isLoading || error) && hasCachedMethods ? cachedMethods : remoteMethods;
 	const t = useTranslations("paymentMethods");
 	const tc = useTranslations("common");
+	const isOnline = useOnlineStatus();
+	const isOfflineMode = !isOnline || !!error;
+
+	useEffect(() => {
+		void readCachedPaymentMethods<PaymentMethod>().then(setCachedMethods);
+	}, []);
+
+	useEffect(() => {
+		// Hanya update cache kalau remote sudah selesai loading
+		if (isLoading) return;
+		setCachedMethods(remoteMethods);
+		void replaceCachedPaymentMethods(remoteMethods);
+	}, [remoteMethods, isLoading]);
 
 	const paymentMethodSchema = z.object({
 		name: z.string().min(1, t("nameRequired")),
@@ -90,12 +119,72 @@ export default function PaymentMethodsPage() {
 		errorMessage: t("deleteError"),
 	});
 
+	useEffect(() => {
+		if (!isOnline) return;
+		void syncReadyQueue({
+			createPaymentMethod: (payload) =>
+				createMutation.mutateAsync(payload as PaymentMethodCreateInput),
+			updatePaymentMethod: (payload) =>
+				updateMutation.mutateAsync(payload as PaymentMethodUpdateInput),
+			deletePaymentMethod: (payload) =>
+				deleteMutation.mutateAsync(payload as { id: number }),
+		});
+	}, [createMutation, deleteMutation, isOnline, updateMutation]);
+
+	const buildOptimisticMethod = (id: number, name: string) =>
+		({
+			id,
+			name,
+			user_uid: methods.find((item) => item.id === id)?.user_uid ?? "local",
+			created_at:
+				methods.find((item) => item.id === id)?.created_at ?? new Date(),
+		}) satisfies PaymentMethod;
+
 	const form = useForm({
 		defaultValues: { name: "" },
 		validators: {
 			onSubmit: paymentMethodSchema,
 		},
-		onSubmit: ({ value }) => {
+		onSubmit: async ({ value }) => {
+			if (isOfflineMode) {
+				if (isEditing) {
+					const nextMethod = buildOptimisticMethod(editingId, value.name);
+					await upsertCachedPaymentMethod(nextMethod);
+					setCachedMethods((current) =>
+						current
+							.map((item) => (item.id === editingId ? nextMethod : item))
+							.sort((a, b) => a.name.localeCompare(b.name)),
+					);
+					await enqueueSyncItem({
+						id: `paymentMethod:update:${editingId}`,
+						entity: "paymentMethod",
+						operation: "update",
+						payload: { id: editingId, name: value.name },
+						status: "pending",
+						retryCount: 0,
+					});
+				} else {
+					const localId = -Date.now();
+					const nextMethod = buildOptimisticMethod(localId, value.name);
+					await upsertCachedPaymentMethod(nextMethod);
+					setCachedMethods((current) =>
+						[...current, nextMethod].sort((a, b) =>
+							a.name.localeCompare(b.name),
+						),
+					);
+					await enqueueSyncItem({
+						id: `paymentMethod:create:${localId}`,
+						entity: "paymentMethod",
+						operation: "create",
+						payload: { localId, name: value.name },
+						status: "pending",
+						retryCount: 0,
+					});
+				}
+				setIsDialogOpen(false);
+				form.reset();
+				return;
+			}
 			if (isEditing) {
 				updateMutation.mutate({ id: editingId, name: value.name });
 			} else {
@@ -117,9 +206,24 @@ export default function PaymentMethodsPage() {
 		setIsDialogOpen(true);
 	};
 
-	const handleDelete = () => {
+	const handleDelete = async () => {
 		if (deleteId !== null) {
-			deleteMutation.mutate({ id: deleteId });
+			if (isOfflineMode) {
+				await removeCachedPaymentMethod(deleteId);
+				setCachedMethods((current) =>
+					current.filter((item) => item.id !== deleteId),
+				);
+				await enqueueSyncItem({
+					id: `paymentMethod:delete:${deleteId}`,
+					entity: "paymentMethod",
+					operation: "delete",
+					payload: { id: deleteId },
+					status: "pending",
+					retryCount: 0,
+				});
+			} else {
+				deleteMutation.mutate({ id: deleteId });
+			}
 			setIsDeleteOpen(false);
 			setDeleteId(null);
 		}
@@ -149,7 +253,7 @@ export default function PaymentMethodsPage() {
 		),
 	};
 
-	if (isLoading) {
+	if (isLoading && methods.length === 0) {
 		return (
 			<Card className="flex flex-col gap-6 p-6">
 				<CardHeader className="p-0">
@@ -170,16 +274,6 @@ export default function PaymentMethodsPage() {
 		);
 	}
 
-	if (error) {
-		return (
-			<Card>
-				<CardContent>
-					<p className="text-red-500">{error.message}</p>
-				</CardContent>
-			</Card>
-		);
-	}
-
 	return (
 		<Card className="flex flex-col gap-4 p-3 sm:gap-6 sm:p-6">
 			<CardHeader className="p-0">
@@ -189,6 +283,9 @@ export default function PaymentMethodsPage() {
 						<span className="text-sm">
 							{t("methodCount", { count: methods.length })}
 						</span>
+						{isOfflineMode ? (
+							<Badge variant="secondary">Offline cache</Badge>
+						) : null}
 					</div>
 					<Button size="sm" onClick={openCreate}>
 						<PlusCircle className="mr-2 h-4 w-4" />
@@ -197,6 +294,11 @@ export default function PaymentMethodsPage() {
 				</div>
 			</CardHeader>
 			<CardContent className="p-0">
+				{isOfflineMode ? (
+					<div className="mb-3 text-muted-foreground text-sm">
+						Offline changes queued for sync.
+					</div>
+				) : null}
 				<DataTable
 					data={methods}
 					columns={[...tableColumns, actionsColumn]}
@@ -285,7 +387,7 @@ export default function PaymentMethodsPage() {
 			<DeleteConfirmationDialog
 				open={isDeleteOpen}
 				onOpenChange={setIsDeleteOpen}
-				onConfirm={handleDelete}
+				onConfirm={() => void handleDelete()}
 				description={t("deleteMessage")}
 			/>
 		</Card>

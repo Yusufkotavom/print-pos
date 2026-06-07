@@ -1,4 +1,14 @@
-import { type LocalDraft, localDb, type SyncQueueItem } from "./db";
+import { requestBackgroundSync } from "./background-sync";
+import {
+	type LocalCustomer,
+	type LocalDraft,
+	type LocalPaymentMethod,
+	type LocalProduct,
+	type LocalProductCategory,
+	type LocalServiceOrder,
+	localDb,
+	type SyncQueueItem,
+} from "./db";
 
 export async function saveDraft<T>(key: string, payload: T) {
 	const draft: LocalDraft = {
@@ -18,26 +28,56 @@ export async function clearDraft(key: string) {
 	await localDb.drafts.delete(key);
 }
 
+function toLocalProduct(product: unknown): LocalProduct {
+	const item = product as {
+		id: number;
+		name: string;
+		sku?: string | null;
+		category?: string | null;
+	};
+	return {
+		id: item.id,
+		serverId: item.id > 0 ? item.id : 0,
+		name: item.name,
+		sku: item.sku,
+		category: item.category,
+		updatedAt: new Date().toISOString(),
+		payload: product,
+	};
+}
+
 export async function replaceCachedProducts(products: unknown[]) {
-	await localDb.products.bulkPut(
-		products.map((product) => {
-			const item = product as {
-				id: number;
-				name: string;
-				sku?: string | null;
-				category?: string | null;
-			};
-			return {
-				id: item.id,
-				serverId: item.id,
-				name: item.name,
-				sku: item.sku,
-				category: item.category,
-				updatedAt: new Date().toISOString(),
-				payload: product,
-			};
-		}),
-	);
+	if (products.length) {
+		// Replace all entries with the fresh server list
+		await localDb.products.clear();
+		await localDb.products.bulkPut(
+			products.map((product) => toLocalProduct(product)),
+		);
+	} else {
+		// Server returned empty — only remove synced (positive-id) entries,
+		// keep pending local entries (negative id) so they aren't lost.
+		const rows = await localDb.products.where("serverId").above(0).toArray();
+		const idsToDelete = rows.map((r) => r.id);
+		if (idsToDelete.length) await localDb.products.bulkDelete(idsToDelete);
+	}
+}
+
+export async function upsertCachedProduct(product: unknown) {
+	await localDb.products.put(toLocalProduct(product));
+}
+
+export async function replaceCachedProductId(
+	localId: number,
+	product: unknown,
+) {
+	if (localId !== (product as { id: number }).id) {
+		await localDb.products.delete(localId);
+	}
+	await localDb.products.put(toLocalProduct(product));
+}
+
+export async function removeCachedProduct(id: number) {
+	await localDb.products.delete(id);
 }
 
 export async function readCachedProducts<T>() {
@@ -45,24 +85,51 @@ export async function readCachedProducts<T>() {
 	return rows.map((row) => row.payload as T);
 }
 
+function toLocalCustomer(customer: unknown): LocalCustomer {
+	const item = customer as {
+		id: number;
+		name: string;
+		phone?: string | null;
+	};
+	return {
+		id: item.id,
+		serverId: item.id > 0 ? item.id : 0,
+		name: item.name,
+		phone: item.phone,
+		updatedAt: new Date().toISOString(),
+		payload: customer,
+	};
+}
+
 export async function replaceCachedCustomers(customers: unknown[]) {
-	await localDb.customers.bulkPut(
-		customers.map((customer) => {
-			const item = customer as {
-				id: number;
-				name: string;
-				phone?: string | null;
-			};
-			return {
-				id: item.id,
-				serverId: item.id,
-				name: item.name,
-				phone: item.phone,
-				updatedAt: new Date().toISOString(),
-				payload: customer,
-			};
-		}),
-	);
+	if (customers.length) {
+		await localDb.customers.clear();
+		await localDb.customers.bulkPut(
+			customers.map((customer) => toLocalCustomer(customer)),
+		);
+	} else {
+		const rows = await localDb.customers.where("serverId").above(0).toArray();
+		const idsToDelete = rows.map((r) => r.id);
+		if (idsToDelete.length) await localDb.customers.bulkDelete(idsToDelete);
+	}
+}
+
+export async function upsertCachedCustomer(customer: unknown) {
+	await localDb.customers.put(toLocalCustomer(customer));
+}
+
+export async function replaceCachedCustomerId(
+	localId: number,
+	customer: unknown,
+) {
+	if (localId !== (customer as { id: number }).id) {
+		await localDb.customers.delete(localId);
+	}
+	await localDb.customers.put(toLocalCustomer(customer));
+}
+
+export async function removeCachedCustomer(id: number) {
+	await localDb.customers.delete(id);
 }
 
 export async function readCachedCustomers<T>() {
@@ -70,24 +137,166 @@ export async function readCachedCustomers<T>() {
 	return rows.map((row) => row.payload as T);
 }
 
+function toLocalPaymentMethod(method: unknown): LocalPaymentMethod {
+	const item = method as { id: number; name: string };
+	return {
+		id: item.id,
+		serverId: item.id > 0 ? item.id : 0,
+		name: item.name,
+		updatedAt: new Date().toISOString(),
+		payload: method,
+	};
+}
+
 export async function replaceCachedPaymentMethods(methods: unknown[]) {
-	await localDb.paymentMethods.bulkPut(
-		methods.map((method) => {
-			const item = method as { id: number; name: string };
-			return {
-				id: item.id,
-				serverId: item.id,
-				name: item.name,
-				updatedAt: new Date().toISOString(),
-				payload: method,
-			};
-		}),
-	);
+	if (methods.length) {
+		await localDb.paymentMethods.clear();
+		await localDb.paymentMethods.bulkPut(methods.map(toLocalPaymentMethod));
+	} else {
+		const rows = await localDb.paymentMethods
+			.where("serverId")
+			.above(0)
+			.toArray();
+		const idsToDelete = rows.map((r) => r.id);
+		if (idsToDelete.length)
+			await localDb.paymentMethods.bulkDelete(idsToDelete);
+	}
+}
+
+export async function upsertCachedPaymentMethod(method: unknown) {
+	await localDb.paymentMethods.put(toLocalPaymentMethod(method));
+}
+
+export async function replaceCachedPaymentMethodId(
+	localId: number,
+	method: unknown,
+) {
+	if (localId !== (method as { id: number }).id) {
+		await localDb.paymentMethods.delete(localId);
+	}
+	await localDb.paymentMethods.put(toLocalPaymentMethod(method));
+}
+
+export async function removeCachedPaymentMethod(id: number) {
+	await localDb.paymentMethods.delete(id);
 }
 
 export async function readCachedPaymentMethods<T>() {
 	const rows = await localDb.paymentMethods.toArray();
 	return rows.map((row) => row.payload as T);
+}
+
+function toLocalProductCategory(category: unknown): LocalProductCategory {
+	const item = category as { id: number; name: string };
+	return {
+		id: item.id,
+		serverId: item.id > 0 ? item.id : 0,
+		name: item.name,
+		updatedAt: new Date().toISOString(),
+		payload: category,
+	};
+}
+
+export async function replaceCachedProductCategories(categories: unknown[]) {
+	if (categories.length) {
+		await localDb.productCategories.clear();
+		await localDb.productCategories.bulkPut(
+			categories.map(toLocalProductCategory),
+		);
+	} else {
+		const rows = await localDb.productCategories
+			.where("serverId")
+			.above(0)
+			.toArray();
+		const idsToDelete = rows.map((r) => r.id);
+		if (idsToDelete.length)
+			await localDb.productCategories.bulkDelete(idsToDelete);
+	}
+}
+
+export async function upsertCachedProductCategory(category: unknown) {
+	await localDb.productCategories.put(toLocalProductCategory(category));
+}
+
+export async function replaceCachedProductCategoryId(
+	localId: number,
+	category: unknown,
+) {
+	if (localId !== (category as { id: number }).id) {
+		await localDb.productCategories.delete(localId);
+	}
+	await localDb.productCategories.put(toLocalProductCategory(category));
+}
+
+export async function removeCachedProductCategory(id: number) {
+	await localDb.productCategories.delete(id);
+}
+
+export async function readCachedProductCategories<T>() {
+	const rows = await localDb.productCategories.toArray();
+	return rows.map((row) => row.payload as T);
+}
+
+function toLocalServiceOrder(serviceOrder: unknown): LocalServiceOrder {
+	const item = serviceOrder as {
+		id: number;
+		service_number?: string | null;
+		status: string;
+		customer?: { name?: string | null } | null;
+	};
+	return {
+		id: item.id,
+		serverId: item.id > 0 ? item.id : 0,
+		serviceNumber: item.service_number,
+		customerName: item.customer?.name ?? null,
+		status: item.status,
+		updatedAt: new Date().toISOString(),
+		payload: serviceOrder,
+	};
+}
+
+export async function replaceCachedServiceOrders(serviceOrders: unknown[]) {
+	if (serviceOrders.length) {
+		await localDb.serviceOrders.clear();
+		await localDb.serviceOrders.bulkPut(
+			serviceOrders.map((serviceOrder) => toLocalServiceOrder(serviceOrder)),
+		);
+	} else {
+		const rows = await localDb.serviceOrders
+			.where("serverId")
+			.above(0)
+			.toArray();
+		const idsToDelete = rows.map((r) => r.id);
+		if (idsToDelete.length) await localDb.serviceOrders.bulkDelete(idsToDelete);
+	}
+}
+
+export async function upsertCachedServiceOrder(serviceOrder: unknown) {
+	await localDb.serviceOrders.put(toLocalServiceOrder(serviceOrder));
+}
+
+export async function replaceCachedServiceOrderId(
+	localId: number,
+	serviceOrder: unknown,
+) {
+	if (localId !== (serviceOrder as { id: number }).id) {
+		await localDb.serviceOrders.delete(localId);
+	}
+	await localDb.serviceOrders.put(toLocalServiceOrder(serviceOrder));
+}
+
+export async function removeCachedServiceOrder(id: number) {
+	await localDb.serviceOrders.delete(id);
+}
+
+export async function readCachedServiceOrders<T>() {
+	const rows = await localDb.serviceOrders.toArray();
+	return rows.map((row) => row.payload as T);
+}
+
+export async function readCachedServiceOrder<T>(id: number) {
+	const row = await localDb.serviceOrders.get(id);
+	return (row?.payload as T | undefined) ?? null;
 }
 
 const MAX_PRODUCT_IMAGE_CACHE_ITEMS = 30;
@@ -144,6 +353,7 @@ export async function enqueueSyncItem(
 		createdAt: now,
 		updatedAt: now,
 	});
+	await requestBackgroundSync();
 }
 
 export async function listSyncQueue<T extends SyncQueueItem = SyncQueueItem>() {
@@ -153,19 +363,18 @@ export async function listSyncQueue<T extends SyncQueueItem = SyncQueueItem>() {
 export async function listReadySyncQueue() {
 	const now = new Date().toISOString();
 	const queue = await localDb.syncQueue.orderBy("createdAt").toArray();
-	return queue.filter(
-		(item) =>
-			item.status !== "syncing" &&
-			(item.status !== "failed" ||
-				!item.nextRetryAt ||
-				item.nextRetryAt <= now),
-	);
+	return queue.filter((item) => {
+		if (item.status === "syncing" || item.status === "success") return false;
+		if (item.status === "conflict") return false;
+		if (item.status !== "failed") return true;
+		return !item.nextRetryAt || item.nextRetryAt <= now;
+	});
 }
 
 export async function countPendingSyncItems() {
 	return localDb.syncQueue
 		.where("status")
-		.anyOf("pending", "syncing", "failed")
+		.anyOf("pending", "syncing", "failed", "conflict")
 		.count();
 }
 
@@ -184,6 +393,14 @@ export async function updateSyncQueueItem(
 	});
 }
 
+export async function markSyncQueueConflict(id: string, errorMessage: string) {
+	await updateSyncQueueItem(id, {
+		status: "conflict",
+		errorMessage,
+		nextRetryAt: undefined,
+	});
+}
+
 export async function setAppMeta<T>(key: string, value: T) {
 	await localDb.appMeta.put({
 		key,
@@ -198,7 +415,13 @@ export async function getAppMeta<T>(key: string) {
 }
 
 export async function mapLocalToServerId(
-	entity: "order" | "serviceOrder",
+	entity:
+		| "order"
+		| "serviceOrder"
+		| "product"
+		| "productCategory"
+		| "paymentMethod"
+		| "customer",
 	localId: string,
 	serverId: number,
 ) {

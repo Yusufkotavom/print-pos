@@ -38,6 +38,7 @@ import type {
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import { usePOSLocalFirst } from "@/hooks/use-pos-local-first";
+import { readCachedProductCategories } from "@/lib/local-db/repo";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
 
@@ -89,7 +90,7 @@ export default function POSPage() {
 		trpc.orders.create.mutationOptions({
 			onSuccess: async (order, variables) => {
 				if (variables.clientOrderId) {
-					await markOrderSynced(variables.clientOrderId, order.id);
+					await markOrderSynced(variables.clientOrderId);
 				}
 				queryClient.invalidateQueries(trpc.orders.list.queryOptions());
 				queryClient.invalidateQueries(trpc.products.list.queryOptions());
@@ -154,6 +155,7 @@ export default function POSPage() {
 	const debouncedProductSearch = useDebouncedValue(productSearch, 250);
 	const [selectedCategory, setSelectedCategory] = useState("all");
 	const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+	const [cachedCategoryNames, setCachedCategoryNames] = useState<string[]>([]);
 	const [orderNote, setOrderNote] = useState("");
 	const [isCartOpen, setIsCartOpen] = useState(false);
 	const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false);
@@ -173,6 +175,7 @@ export default function POSPage() {
 		remoteProducts,
 		remoteCustomers,
 		remotePaymentMethods,
+		isRemoteLoading: loadingProducts || loadingCustomers || loadingMethods,
 		createOrder: async (payload: {
 			clientOrderId?: string;
 			customerId: number;
@@ -219,6 +222,13 @@ export default function POSPage() {
 	}, [selectedProducts, selectedCustomer, orderNote, savePOSDraft]);
 
 	useEffect(() => {
+		// Pre-load cached category names as fallback for offline dropdown
+		void readCachedProductCategories<{ id: number; name: string }>().then(
+			(cats) => setCachedCategoryNames(cats.map((c) => c.name)),
+		);
+	}, []);
+
+	useEffect(() => {
 		void syncQueuedOrders();
 		const handleOnline = () => void syncQueuedOrders();
 		window.addEventListener("online", handleOnline);
@@ -247,11 +257,15 @@ export default function POSPage() {
 	});
 
 	const productCategories = useMemo(() => {
-		const names = products
+		const fromProducts = products
 			.map((product) => product.category)
 			.filter((category): category is string => Boolean(category));
-		return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
-	}, [products]);
+		// Merge categories from products with cached category names for offline fallback
+		const merged = Array.from(
+			new Set([...fromProducts, ...cachedCategoryNames]),
+		).sort((a, b) => a.localeCompare(b));
+		return merged;
+	}, [products, cachedCategoryNames]);
 
 	const filteredProducts = useMemo(() => {
 		const q = debouncedProductSearch.toLowerCase().trim();

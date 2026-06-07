@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { POSDraft, QueuedPOSOrder } from "@/components/pos-types";
 import { POS_DRAFT_KEY } from "@/lib/local-db/keys";
 import {
@@ -6,9 +6,7 @@ import {
 	countPendingSyncItems,
 	enqueueSyncItem,
 	getNextRetryAt,
-	listReadySyncQueue,
 	listSyncQueue,
-	mapLocalToServerId,
 	readCachedCustomers,
 	readCachedPaymentMethods,
 	readCachedProducts,
@@ -20,6 +18,7 @@ import {
 	saveDraft,
 	updateSyncQueueItem,
 } from "@/lib/local-db/repo";
+import { syncReadyQueue } from "@/lib/local-db/sync-engine";
 
 export function usePOSLocalFirst<
 	TProduct,
@@ -31,11 +30,14 @@ export function usePOSLocalFirst<
 	remoteCustomers,
 	remotePaymentMethods,
 	createOrder,
+	isRemoteLoading = false,
 }: {
 	remoteProducts: TProduct[];
 	remoteCustomers: TCustomer[];
 	remotePaymentMethods: TPaymentMethod[];
 	createOrder: (payload: TCreatePayload) => Promise<void>;
+	/** Pass true saat query sedang loading agar cache tidak dihapus terlalu awal */
+	isRemoteLoading?: boolean;
 }) {
 	const [cachedProducts, setCachedProducts] = useState<TProduct[]>([]);
 	const [cachedCustomers, setCachedCustomers] = useState<TCustomer[]>([]);
@@ -43,8 +45,6 @@ export function usePOSLocalFirst<
 		TPaymentMethod[]
 	>([]);
 	const [queueCount, setQueueCount] = useState(0);
-	const syncInFlightRef = useRef(false);
-	const syncedOrderIdsRef = useRef<Set<string>>(new Set());
 
 	const products = remoteProducts.length ? remoteProducts : cachedProducts;
 	const customers = remoteCustomers.length ? remoteCustomers : cachedCustomers;
@@ -69,18 +69,24 @@ export function usePOSLocalFirst<
 	}, []);
 
 	useEffect(() => {
-		if (remoteProducts.length) void replaceCachedProducts(remoteProducts);
-	}, [remoteProducts]);
+		// Hanya sync ke cache kalau remote sudah selesai loading
+		// (bukan default [] saat masih fetching)
+		if (isRemoteLoading) return;
+		setCachedProducts(remoteProducts);
+		void replaceCachedProducts(remoteProducts);
+	}, [remoteProducts, isRemoteLoading]);
 
 	useEffect(() => {
-		if (remoteCustomers.length) void replaceCachedCustomers(remoteCustomers);
-	}, [remoteCustomers]);
+		if (isRemoteLoading) return;
+		setCachedCustomers(remoteCustomers);
+		void replaceCachedCustomers(remoteCustomers);
+	}, [remoteCustomers, isRemoteLoading]);
 
 	useEffect(() => {
-		if (remotePaymentMethods.length) {
-			void replaceCachedPaymentMethods(remotePaymentMethods);
-		}
-	}, [remotePaymentMethods]);
+		if (isRemoteLoading) return;
+		setCachedPaymentMethods(remotePaymentMethods);
+		void replaceCachedPaymentMethods(remotePaymentMethods);
+	}, [remotePaymentMethods, isRemoteLoading]);
 
 	const loadDraft = useCallback(async () => {
 		return readDraft<POSDraft>(POS_DRAFT_KEY);
@@ -106,15 +112,10 @@ export function usePOSLocalFirst<
 		setQueueCount(await countPendingSyncItems());
 	}, []);
 
-	const markOrderSynced = useCallback(
-		async (clientOrderId: string, serverId?: number) => {
-			syncedOrderIdsRef.current.add(clientOrderId);
-			if (serverId) await mapLocalToServerId("order", clientOrderId, serverId);
-			await removeSyncQueueItem(clientOrderId);
-			setQueueCount(await countPendingSyncItems());
-		},
-		[],
-	);
+	const markOrderSynced = useCallback(async (clientOrderId: string) => {
+		await removeSyncQueueItem(clientOrderId);
+		setQueueCount(await countPendingSyncItems());
+	}, []);
 
 	const markOrderFailed = useCallback(
 		async (clientOrderId: string, errorMessage: string) => {
@@ -133,31 +134,16 @@ export function usePOSLocalFirst<
 	);
 
 	const syncQueuedOrders = useCallback(async () => {
-		if (typeof window === "undefined") return;
-		if (syncInFlightRef.current || !navigator.onLine) return;
-		const queue = await listReadySyncQueue();
-		const orderQueue = queue.filter((item) => item.entity === "order");
-		if (orderQueue.length === 0) {
-			setQueueCount(await countPendingSyncItems());
-			return;
-		}
-		syncInFlightRef.current = true;
-		try {
-			for (const queued of orderQueue) {
-				const payload = queued.payload as TCreatePayload & QueuedPOSOrder;
-				if (syncedOrderIdsRef.current.has(payload.clientOrderId)) continue;
-				await updateSyncQueueItem(queued.id, {
-					status: "syncing",
-					errorMessage: undefined,
-					nextRetryAt: undefined,
-				});
-				setQueueCount(await countPendingSyncItems());
-				await createOrder(payload);
-			}
-		} finally {
-			syncInFlightRef.current = false;
-			setQueueCount(await countPendingSyncItems());
-		}
+		await syncReadyQueue(
+			{
+				createOrder: async (payload) => {
+					await createOrder(payload as TCreatePayload);
+					return undefined;
+				},
+			},
+			{ entities: ["order"] },
+		);
+		setQueueCount(await countPendingSyncItems());
 	}, [createOrder]);
 
 	return {

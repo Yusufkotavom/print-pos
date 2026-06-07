@@ -44,7 +44,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { PaymentDialog } from "@/components/payment-dialog";
@@ -53,8 +53,20 @@ import { POSProductCatalog } from "@/components/pos-product-catalog";
 import type { POSProductItem } from "@/components/pos-types";
 import { ServiceOrderFields } from "@/components/service-order-fields";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import {
+	enqueueSyncItem,
+	readCachedPaymentMethods,
+	readCachedProducts,
+	readCachedServiceOrder,
+	removeCachedServiceOrder,
+	upsertCachedServiceOrder,
+} from "@/lib/local-db/repo";
 import { useTRPC } from "@/lib/trpc/client";
+import type { RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
+
+type ServiceDetail = RouterOutputs["serviceOrders"]["get"];
 
 const statuses = [
 	"in_progress",
@@ -89,6 +101,7 @@ export default function ServiceDetailPage({
 	const serviceId = Number.parseInt(id, 10);
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
+	const isOnline = useOnlineStatus();
 	const t = useTranslations("services");
 	const tc = useTranslations("common");
 	const locale = useLocale();
@@ -112,25 +125,106 @@ export default function ServiceDetailPage({
 	const [productSearch, setProductSearch] = useState("");
 	const [selectedCategory, setSelectedCategory] = useState("all");
 	const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+	const [cachedService, setCachedService] = useState<ServiceDetail>(null);
+	const [localService, setLocalService] = useState<ServiceDetail>(null);
 	const [warrantyUnit, setWarrantyUnit] = useState<
 		"none" | "day" | "month" | "year"
 	>("none");
 	const [warrantyValue, setWarrantyValue] = useState("");
 	const [warrantyNotes, setWarrantyNotes] = useState("");
 	const search = useDebouncedValue(productSearch, 250);
-	const { data: service, isLoading } = useQuery(
-		trpc.serviceOrders.get.queryOptions({ id: serviceId }),
-	);
-	const { data: paymentMethods = [] } = useQuery(
-		trpc.paymentMethods.list.queryOptions(),
-	);
+	const {
+		data: remoteService,
+		isLoading,
+		error,
+	} = useQuery(trpc.serviceOrders.get.queryOptions({ id: serviceId }));
+	const {
+		data: remotePaymentMethods = [],
+		isLoading: paymentMethodsLoading,
+		error: paymentMethodsError,
+	} = useQuery(trpc.paymentMethods.list.queryOptions());
 	const { data: serviceTypes = [] } = useQuery(
 		trpc.serviceTypes.list.queryOptions(),
 	);
 	const { data: companySettings } = useQuery(
 		trpc.companySettings.get.queryOptions(),
 	);
-	const { data: products = [] } = useQuery(trpc.products.list.queryOptions());
+	const {
+		data: remoteProducts = [],
+		isLoading: productsLoading,
+		error: productsError,
+	} = useQuery(trpc.products.list.queryOptions());
+	const [cachedProducts, setCachedProducts] = useState<
+		RouterOutputs["products"]["list"]
+	>([]);
+	const [cachedPaymentMethods, setCachedPaymentMethods] = useState<
+		RouterOutputs["paymentMethods"]["list"]
+	>([]);
+	const products =
+		(productsLoading || productsError) && cachedProducts.length
+			? cachedProducts
+			: remoteProducts;
+	const paymentMethods =
+		(paymentMethodsLoading || paymentMethodsError) &&
+		cachedPaymentMethods.length
+			? cachedPaymentMethods
+			: remotePaymentMethods;
+	const service = localService ?? remoteService ?? cachedService;
+
+	useEffect(() => {
+		void readCachedServiceOrder<ServiceDetail>(serviceId).then(
+			setCachedService,
+		);
+		void readCachedProducts<RouterOutputs["products"]["list"][number]>().then(
+			setCachedProducts,
+		);
+		void readCachedPaymentMethods<
+			RouterOutputs["paymentMethods"]["list"][number]
+		>().then(setCachedPaymentMethods);
+	}, [serviceId]);
+
+	useEffect(() => {
+		if (remoteService) {
+			setLocalService(null);
+			setCachedService(remoteService);
+			void upsertCachedServiceOrder(remoteService);
+		}
+	}, [remoteService]);
+
+	useEffect(() => {
+		// Hanya update cache kalau remote sudah selesai loading
+		if (productsLoading) return;
+		setCachedProducts(remoteProducts);
+	}, [remoteProducts, productsLoading]);
+
+	useEffect(() => {
+		if (paymentMethodsLoading) return;
+		setCachedPaymentMethods(remotePaymentMethods);
+	}, [remotePaymentMethods, paymentMethodsLoading]);
+
+	const applyLocalService = (next: ServiceDetail) => {
+		setLocalService(next);
+		if (next) void upsertCachedServiceOrder(next);
+	};
+
+	const queueServiceAction = async (
+		operation:
+			| "update"
+			| "updateStatus"
+			| "receivePayment"
+			| "updateWarranty"
+			| "delete",
+		payload: unknown,
+	) => {
+		await enqueueSyncItem({
+			id: `serviceOrder:${serviceId}:${operation}:${Date.now()}`,
+			entity: "serviceOrder",
+			operation,
+			payload,
+			status: "pending",
+			retryCount: 0,
+		});
+	};
 
 	const updateService = useMutation(
 		trpc.serviceOrders.update.mutationOptions({
@@ -217,7 +311,7 @@ export default function ServiceDetailPage({
 		0,
 	);
 
-	if (isLoading) return <Skeleton className="h-96 w-full" />;
+	if (isLoading && !service) return <Skeleton className="h-96 w-full" />;
 	if (!service)
 		return <div className="text-muted-foreground">{t("serviceNotFound")}</div>;
 
@@ -328,7 +422,7 @@ export default function ServiceDetailPage({
 					wholesale_price: product?.wholesale_price ?? null,
 					wholesale_min_qty: product?.wholesale_min_qty ?? null,
 					category: product?.category ?? "",
-					image_url: product?.image_url ?? item.product?.image_url ?? null,
+					image_url: product?.image_url ?? null,
 					quantity: item.quantity,
 				};
 			}),
@@ -338,6 +432,11 @@ export default function ServiceDetailPage({
 
 	return (
 		<div className="max-w-4xl space-y-6">
+			{(!isOnline || error) && (
+				<div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-700 text-sm">
+					Offline mode. Changes will sync later.
+				</div>
+			)}
 			<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 				<div className="flex items-center gap-4">
 					<Link href="/admin/services">
@@ -613,6 +712,22 @@ export default function ServiceDetailPage({
 							onClick={() => {
 								if (!nextStatus) return;
 								const status = nextStatus;
+								if (!isOnline) {
+									const nextService = {
+										...service,
+										status,
+										completed_at: status === "done" ? new Date() : null,
+									};
+									applyLocalService(nextService);
+									void queueServiceAction("updateStatus", {
+										id: service.id,
+										status,
+									});
+									setStatusDialogOpen(false);
+									toast.success("Status queued");
+									if (statusWhatsappEnabled) openWhatsappForStatus(status);
+									return;
+								}
 								updateStatus.mutate(
 									{ id: service.id, status },
 									{
@@ -744,8 +859,8 @@ export default function ServiceDetailPage({
 									prev.filter((item) => item.id !== productId),
 								)
 							}
-							onCreateOrder={() =>
-								updateService.mutate({
+							onCreateOrder={() => {
+								const payload = {
 									id: service.id,
 									serviceType: editServiceType,
 									estimatedDoneAt: toDateOnly(editEstimatedDoneAt) ?? null,
@@ -758,11 +873,41 @@ export default function ServiceDetailPage({
 										price: item.price,
 										name: item.name,
 										lineType:
-											item.product_type === "service" ? "service" : "product",
+											item.product_type === "service"
+												? ("service" as const)
+												: ("product" as const),
 									})),
 									total: editTotal,
-								})
-							}
+								};
+								if (!isOnline) {
+									applyLocalService({
+										...service,
+										service_type: editServiceType,
+										estimated_done_at: payload.estimatedDoneAt,
+										customer_note: editCustomerNote,
+										internal_note: editInternalNote,
+										details_json: { text: editDetailText },
+										total_amount: editTotal,
+										items: editItems.map((item, index) => ({
+											id: index + 1,
+											product_id: item.product_id ?? item.id,
+											line_type:
+												item.product_type === "service" ? "service" : "product",
+											item_name: item.name,
+											item_type: item.product_type,
+											quantity: item.quantity,
+											price: item.price,
+											cost: 0,
+											note: null,
+										})),
+									});
+									void queueServiceAction("update", payload);
+									setEditOpen(false);
+									toast.success("Service update queued");
+									return;
+								}
+								updateService.mutate(payload);
+							}}
 						/>
 					</div>
 					<DialogFooter>
@@ -842,8 +987,8 @@ export default function ServiceDetailPage({
 						<Button
 							type="button"
 							disabled={updateWarranty.isPending}
-							onClick={() =>
-								updateWarranty.mutate({
+							onClick={() => {
+								const payload = {
 									id: service.id,
 									warrantyUnit,
 									warrantyValue:
@@ -851,8 +996,21 @@ export default function ServiceDetailPage({
 											? undefined
 											: Number.parseInt(warrantyValue || "0", 10) || undefined,
 									warrantyNotes,
-								})
-							}
+								};
+								if (!isOnline) {
+									applyLocalService({
+										...service,
+										warranty_unit: warrantyUnit,
+										warranty_value: payload.warrantyValue ?? null,
+										warranty_notes: warrantyNotes,
+									});
+									void queueServiceAction("updateWarranty", payload);
+									setWarrantyDialogOpen(false);
+									toast.success("Warranty queued");
+									return;
+								}
+								updateWarranty.mutate(payload);
+							}}
 						>
 							{tc("save")}
 						</Button>
@@ -875,18 +1033,37 @@ export default function ServiceDetailPage({
 				locale={locale}
 				paymentMethods={paymentMethods}
 				isPending={receivePayment.isPending}
-				onSubmit={({ paymentMethodId, amount }) =>
-					receivePayment.mutate({
-						id: service.id,
-						paymentMethodId,
-						amount,
-					})
-				}
+				onSubmit={({ paymentMethodId, amount }) => {
+					const payload = { id: service.id, paymentMethodId, amount };
+					if (!isOnline) {
+						const paidAmount = service.paid_amount + amount;
+						applyLocalService({
+							...service,
+							paid_amount: paidAmount,
+							payment_status:
+								paidAmount >= service.total_amount ? "paid" : "partial",
+						});
+						void queueServiceAction("receivePayment", payload);
+						setPaymentOpen(false);
+						toast.success("Payment queued");
+						return;
+					}
+					receivePayment.mutate(payload);
+				}}
 			/>
 			<DeleteConfirmationDialog
 				open={deleteOpen}
 				onOpenChange={setDeleteOpen}
-				onConfirm={() => deleteService.mutate({ id: service.id })}
+				onConfirm={() => {
+					if (!isOnline) {
+						void queueServiceAction("delete", { id: service.id });
+						void removeCachedServiceOrder(service.id);
+						toast.success("Delete queued");
+						window.location.href = "/admin/services";
+						return;
+					}
+					deleteService.mutate({ id: service.id });
+				}}
 				description="Service dengan pembayaran tidak bisa dihapus."
 			/>
 		</div>

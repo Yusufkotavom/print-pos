@@ -99,5 +99,7 @@ export function makeUser(id: string) {
 		image: null,
 		createdAt: new Date(),
 		updatedAt: new Date(),
+		status: "active" as const,
+		hasActiveSubscription: true,
 	};
 }

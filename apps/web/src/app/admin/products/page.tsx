@@ -60,30 +60,77 @@ import { useOnlineStatus } from "@/hooks/use-online-status";
 import { useProductImageSync } from "@/hooks/use-product-image-sync";
 import {
 	cacheProductImage,
+	enqueueSyncItem,
+	readCachedProductCategories,
 	readCachedProductImage,
+	readCachedProducts,
+	removeCachedProduct,
 	removeCachedProductImage,
+	replaceCachedProductCategories,
+	replaceCachedProducts,
+	upsertCachedProduct,
 } from "@/lib/local-db/repo";
+import { syncReadyQueue } from "@/lib/local-db/sync-engine";
 import { uploadProductImage } from "@/lib/product-images";
 import { useTRPC } from "@/lib/trpc/client";
-import type { RouterOutputs } from "@/lib/trpc/router";
+import type { RouterInputs, RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
 
 type Product = RouterOutputs["products"]["list"][number];
+type ProductCreateInput = RouterInputs["products"]["create"];
+type ProductUpdateInput = RouterInputs["products"]["update"];
 type ProductType = "product" | "service";
 
 export default function Products() {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
-	const { data: products = [], isLoading } = useQuery(
-		trpc.products.list.queryOptions(),
-	);
-	const { data: categories = [] } = useQuery(
-		trpc.productCategories.list.queryOptions(),
-	);
+	const {
+		data: remoteProducts = [],
+		isLoading,
+		error,
+	} = useQuery(trpc.products.list.queryOptions());
+	const [cachedProducts, setCachedProducts] = useState<Product[]>([]);
+	const hasCachedProducts = cachedProducts.length > 0;
+	const products =
+		(isLoading || error) && hasCachedProducts ? cachedProducts : remoteProducts;
+	const {
+		data: remoteCategories = [],
+		isLoading: categoriesLoading,
+		error: categoriesError,
+	} = useQuery(trpc.productCategories.list.queryOptions());
 	const t = useTranslations("products");
 	const tc = useTranslations("common");
 	const locale = useLocale();
 	const isOnline = useOnlineStatus();
+
+	const [cachedCategories, setCachedCategories] = useState<
+		RouterOutputs["productCategories"]["list"]
+	>([]);
+
+	useEffect(() => {
+		void readCachedProducts<Product>().then(setCachedProducts);
+		void readCachedProductCategories<
+			RouterOutputs["productCategories"]["list"][number]
+		>().then(setCachedCategories);
+	}, []);
+
+	useEffect(() => {
+		// Hanya update cache kalau remote sudah selesai loading (bukan default [])
+		if (isLoading) return;
+		setCachedProducts(remoteProducts);
+		void replaceCachedProducts(remoteProducts);
+	}, [remoteProducts, isLoading]);
+
+	useEffect(() => {
+		if (categoriesLoading) return;
+		setCachedCategories(remoteCategories);
+		void replaceCachedProductCategories(remoteCategories);
+	}, [remoteCategories, categoriesLoading]);
+
+	const categories =
+		(categoriesLoading || categoriesError) && cachedCategories.length
+			? cachedCategories
+			: remoteCategories;
 
 	const productFormSchema = z.object({
 		name: z.string().min(1, t("nameRequired")),
@@ -225,6 +272,35 @@ export default function Products() {
 
 	const isEditing = editingId !== null;
 	const invalidateKeys = trpc.products.list.queryOptions().queryKey;
+	const buildOptimisticProduct = (
+		id: number,
+		payload: ProductCreateInput | ProductUpdateInput,
+	) => {
+		const current = products.find((item) => item.id === id);
+		return {
+			id,
+			name: payload.name ?? current?.name ?? "",
+			description: payload.description ?? current?.description ?? null,
+			price: payload.price ?? current?.price ?? 0,
+			cost: payload.cost ?? current?.cost ?? 0,
+			in_stock: payload.in_stock ?? current?.in_stock ?? 0,
+			track_stock: payload.track_stock ?? current?.track_stock ?? true,
+			wholesale_price:
+				payload.wholesale_price ?? current?.wholesale_price ?? null,
+			wholesale_min_qty:
+				payload.wholesale_min_qty ?? current?.wholesale_min_qty ?? null,
+			product_type: payload.product_type ?? current?.product_type ?? "product",
+			category: payload.category ?? current?.category ?? null,
+			image_url: payload.image_url ?? current?.image_url ?? null,
+			image_key: payload.image_key ?? current?.image_key ?? null,
+			image_width: payload.image_width ?? current?.image_width ?? null,
+			image_height: payload.image_height ?? current?.image_height ?? null,
+			image_blurhash: current?.image_blurhash ?? null,
+			image_updated_at: current?.image_updated_at ?? null,
+			user_uid: current?.user_uid ?? "local",
+			created_at: current?.created_at ?? new Date(),
+		} satisfies Product;
+	};
 	const resetImageState = () => {
 		setImageFile(null);
 		setImagePreviewUrl(null);
@@ -280,10 +356,20 @@ export default function Products() {
 
 	useEffect(() => {
 		void syncQueuedProductImages();
-		const handleOnline = () => void syncQueuedProductImages();
+		const handleOnline = () => {
+			void syncReadyQueue({
+				createProduct: (payload) =>
+					createMutation.mutateAsync(payload as ProductCreateInput),
+				updateProduct: (payload) =>
+					updateMutation.mutateAsync(payload as ProductUpdateInput),
+				deleteProduct: (payload) =>
+					deleteMutation.mutateAsync(payload as { id: number }),
+			});
+			void syncQueuedProductImages();
+		};
 		window.addEventListener("online", handleOnline);
 		return () => window.removeEventListener("online", handleOnline);
-	}, [syncQueuedProductImages]);
+	}, [createMutation, deleteMutation, syncQueuedProductImages, updateMutation]);
 
 	const createCategoryMutation = useMutation(
 		trpc.productCategories.create.mutationOptions({
@@ -318,17 +404,8 @@ export default function Products() {
 		onSubmit: async ({ value }) => {
 			const trackStock = value.product_type === "product" && value.track_stock;
 			const inStock = trackStock ? value.in_stock : 0;
-			if (imageFile && editingId !== null && !isOnline) {
-				await cacheProductImage(editingId, imageFile);
-				await queueProductImageUpload(editingId);
-				toast.success("Gambar disimpan lokal dan masuk antrean sinkronisasi.");
-				resetImageState();
-				setIsDialogOpen(false);
-				return;
-			}
-			const uploadedImage = imageFile
-				? await uploadProductImage(imageFile)
-				: imageMeta;
+			const uploadedImage =
+				imageFile && isOnline ? await uploadProductImage(imageFile) : imageMeta;
 			const payload = {
 				name: value.name,
 				description: value.description || undefined,
@@ -349,6 +426,54 @@ export default function Products() {
 				image_height: uploadedImage?.height,
 			};
 
+			if (!isOnline) {
+				if (isEditing) {
+					const nextProduct = buildOptimisticProduct(editingId, {
+						id: editingId,
+						...payload,
+					});
+					if (imageFile) {
+						await cacheProductImage(editingId, imageFile);
+						await queueProductImageUpload(editingId);
+					}
+					await upsertCachedProduct(nextProduct);
+					setCachedProducts((current) => {
+						const filtered = current.filter((item) => item.id !== editingId);
+						return [...filtered, nextProduct].sort((a, b) =>
+							a.name.localeCompare(b.name),
+						);
+					});
+					await enqueueSyncItem({
+						id: `product:update:${editingId}`,
+						entity: "product",
+						operation: "update",
+						payload: { id: editingId, ...payload },
+						status: "pending",
+						retryCount: 0,
+					});
+				} else {
+					const localId = -Date.now();
+					const nextProduct = buildOptimisticProduct(localId, payload);
+					await upsertCachedProduct(nextProduct);
+					setCachedProducts((current) =>
+						[...current, nextProduct].sort((a, b) =>
+							a.name.localeCompare(b.name),
+						),
+					);
+					await enqueueSyncItem({
+						id: `product:create:${localId}`,
+						entity: "product",
+						operation: "create",
+						payload: { localId, ...payload },
+						status: "pending",
+						retryCount: 0,
+					});
+				}
+				toast.success(t("updated"));
+				resetImageState();
+				setIsDialogOpen(false);
+				return;
+			}
 			if (isEditing) {
 				updateMutation.mutate({ id: editingId, ...payload });
 			} else {
@@ -410,7 +535,23 @@ export default function Products() {
 	const handleDelete = () => {
 		if (deleteId !== null) {
 			void removeCachedProductImage(deleteId);
-			deleteMutation.mutate({ id: deleteId });
+			if (!isOnline) {
+				void removeCachedProduct(deleteId);
+				setCachedProducts((current) =>
+					current.filter((item) => item.id !== deleteId),
+				);
+				void enqueueSyncItem({
+					id: `product:delete:${deleteId}`,
+					entity: "product",
+					operation: "delete",
+					payload: { id: deleteId },
+					status: "pending",
+					retryCount: 0,
+				});
+				toast.success(t("deleted"));
+			} else {
+				deleteMutation.mutate({ id: deleteId });
+			}
 			setIsDeleteOpen(false);
 			setDeleteId(null);
 		}
@@ -450,7 +591,7 @@ export default function Products() {
 		),
 	};
 
-	if (isLoading) {
+	if (isLoading && !hasCachedProducts) {
 		return (
 			<Card className="flex flex-col gap-4 p-3 sm:gap-6 sm:p-6">
 				<CardHeader className="p-0">
@@ -478,7 +619,7 @@ export default function Products() {
 		<>
 			{!isOnline && (
 				<div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-blue-900 text-sm">
-					Offline mode. Update gambar produk akan disinkronkan nanti.
+					Offline mode. Perubahan produk dan gambar akan disinkronkan nanti.
 				</div>
 			)}
 			{(imageQueueCount > 0 || failedImageQueueCount > 0) && (
