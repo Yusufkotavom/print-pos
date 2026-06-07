@@ -1,4 +1,5 @@
-import { desc, eq } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 
 const unlimitedFeatures = ["Unlimited access"];
@@ -60,7 +61,6 @@ const subscriptionSchema = z.object({
 export const platformSubscriptionsRouter = router({
 	listPlans: adminProcedure
 		.input(z.void())
-		.output(z.array(planSchema))
 		.query(async () =>
 			db.query.plans.findMany({ orderBy: desc(plans.created_at) }),
 		),
@@ -74,7 +74,6 @@ export const platformSubscriptionsRouter = router({
 				status: z.enum(["active", "inactive", "archived"]),
 			}),
 		)
-		.output(planSchema)
 		.mutation(async ({ input }) => {
 			const [created] = await db
 				.insert(plans)
@@ -93,7 +92,6 @@ export const platformSubscriptionsRouter = router({
 				status: z.enum(["active", "inactive", "archived"]),
 			}),
 		)
-		.output(planSchema)
 		.mutation(async ({ input }) => {
 			const { id, ...data } = input;
 			const [updated] = await db
@@ -112,7 +110,6 @@ export const platformSubscriptionsRouter = router({
 		}),
 	listSubscriptions: adminProcedure
 		.input(z.void())
-		.output(z.array(subscriptionSchema))
 		.query(async () =>
 			db.query.subscriptions.findMany({
 				with: {
@@ -136,8 +133,21 @@ export const platformSubscriptionsRouter = router({
 				cancelledAt: z.date().nullable().optional(),
 			}),
 		)
-		.output(subscriptionSchema)
 		.mutation(async ({ input }) => {
+			const existingActive = await db.query.subscriptions.findFirst({
+				where: and(
+					eq(subscriptions.userId, input.userId),
+					eq(subscriptions.status, "active"),
+				),
+			});
+
+			if (existingActive) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "UserAlreadyHasSubscription",
+				});
+			}
+
 			const [created] = await db
 				.insert(subscriptions)
 				.values({
@@ -166,7 +176,6 @@ export const platformSubscriptionsRouter = router({
 				cancelledAt: z.date().nullable().optional(),
 			}),
 		)
-		.output(subscriptionSchema)
 		.mutation(async ({ input }) => {
 			const { id, ...data } = input;
 			await db
@@ -186,7 +195,6 @@ export const platformSubscriptionsRouter = router({
 		}),
 	pauseSubscription: adminProcedure
 		.input(z.object({ id: z.number() }))
-		.output(subscriptionSchema)
 		.mutation(async ({ input }) => {
 			await db
 				.update(subscriptions)
@@ -201,7 +209,6 @@ export const platformSubscriptionsRouter = router({
 		}),
 	resumeSubscription: adminProcedure
 		.input(z.object({ id: z.number() }))
-		.output(subscriptionSchema)
 		.mutation(async ({ input }) => {
 			await db
 				.update(subscriptions)
@@ -216,7 +223,6 @@ export const platformSubscriptionsRouter = router({
 		}),
 	extendSubscription: adminProcedure
 		.input(z.object({ id: z.number(), days: z.number().int().positive() }))
-		.output(subscriptionSchema)
 		.mutation(async ({ input }) => {
 			const existing = await db.query.subscriptions.findFirst({
 				where: eq(subscriptions.id, input.id),
@@ -248,11 +254,6 @@ export const platformSubscriptionsRouter = router({
 		}),
 	listUsers: adminProcedure
 		.input(z.void())
-		.output(
-			z.array(
-				z.object({ id: z.string(), name: z.string(), email: z.string() }),
-			),
-		)
 		.query(async () =>
 			db.query.user.findMany({
 				columns: { id: true, name: true, email: true },

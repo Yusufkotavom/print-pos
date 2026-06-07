@@ -58,7 +58,12 @@ export function useCrudMutation<
 			onMutateResult: TOnMutateResult | undefined,
 			context: MutationFunctionContext,
 		) => {
-			toast.error(errorMessage);
+			const trpcMessage = (error as any)?.message;
+			if (trpcMessage === "UserAlreadyHasSubscription") {
+				toast.error("User sudah memiliki langganan aktif, silakan edit langganan tersebut");
+			} else {
+				toast.error(errorMessage);
+			}
 			originalOnError?.(error, variables, onMutateResult, context);
 		},
 	});

@@ -15,7 +15,7 @@ export default async function Layout({
 		redirect("/login");
 	}
 	if (!user.isPlatformAdmin && !user.hasActiveSubscription) {
-		redirect("/login");
+		redirect("/account");
 	}
 	const isPlatformAdmin = user.isPlatformAdmin && user.status === "active";
 	return (

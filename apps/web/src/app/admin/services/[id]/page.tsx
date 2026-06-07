@@ -750,7 +750,7 @@ export default function ServiceDetailPage({
 									status,
 								});
 								setStatusDialogOpen(false);
-								toast.success("Status queued");
+								toast.success(t("statusUpdated"));
 								if (statusWhatsappEnabled) openWhatsappForStatus(status);
 							}}
 						>
@@ -917,7 +917,7 @@ export default function ServiceDetailPage({
 								});
 								void queueServiceAction("update", payload);
 								setEditOpen(false);
-								toast.success("Service update queued");
+								toast.success("Service diperbarui");
 							}}
 						/>
 					</div>
@@ -1016,7 +1016,7 @@ export default function ServiceDetailPage({
 								});
 								void queueServiceAction("updateWarranty", payload);
 								setWarrantyDialogOpen(false);
-								toast.success("Warranty queued");
+								toast.success("Garansi diperbarui");
 							}}
 						>
 							{tc("save")}
@@ -1051,7 +1051,7 @@ export default function ServiceDetailPage({
 					});
 					void queueServiceAction("receivePayment", payload);
 					setPaymentOpen(false);
-					toast.success("Payment queued");
+					toast.success(t("paymentReceived"));
 				}}
 			/>
 			<DeleteConfirmationDialog
@@ -1060,7 +1060,7 @@ export default function ServiceDetailPage({
 				onConfirm={() => {
 					void queueServiceAction("delete", { id: service.id });
 					void removeCachedServiceOrder(service.id);
-					toast.success("Delete queued");
+					toast.success("Service dihapus");
 					window.location.href = "/admin/services";
 				}}
 				description="Service dengan pembayaran tidak bisa dihapus."

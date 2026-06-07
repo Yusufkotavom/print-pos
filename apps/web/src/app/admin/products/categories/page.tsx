@@ -239,7 +239,7 @@ export default function ProductCategoriesPage() {
 			<CardContent>
 				{isOfflineMode ? (
 					<div className="mb-3 text-muted-foreground text-sm">
-						Offline changes queued for sync.
+						Ada perubahan offline yang menunggu sinkronisasi.
 					</div>
 				) : null}
 				<DataTable

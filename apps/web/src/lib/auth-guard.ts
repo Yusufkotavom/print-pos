@@ -29,6 +29,11 @@ export async function getAuthUser() {
 		orderBy: desc(subscriptions.currentPeriodEnd),
 		columns: { id: true },
 	});
+	const anySubscription = await db.query.subscriptions.findFirst({
+		where: eq(subscriptions.userId, session.user.id),
+		columns: { id: true },
+	});
+
 	const sessionUser = session.user as typeof session.user & {
 		role?: string;
 		status?: string;
@@ -37,7 +42,8 @@ export async function getAuthUser() {
 	const status = authUser?.status ?? sessionUser.status ?? "active";
 	const isPlatformAdmin = role === "super_admin";
 	let hasActiveSubscription = Boolean(activeSubscription);
-	if (!isPlatformAdmin && status === "active" && !hasActiveSubscription) {
+	
+	if (!isPlatformAdmin && status === "active" && !hasActiveSubscription && !anySubscription) {
 		const now = new Date();
 		const currentPeriodEnd = new Date(now);
 		currentPeriodEnd.setDate(currentPeriodEnd.getDate() + 30);
