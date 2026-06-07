@@ -4,10 +4,11 @@ import { Button } from "@finopenpos/ui/components/button";
 import { Card, CardContent, CardFooter } from "@finopenpos/ui/components/card";
 import { Input } from "@finopenpos/ui/components/input";
 import { Label } from "@finopenpos/ui/components/label";
-import { MountainIcon } from "lucide-react";
+import { Loader2, MountainIcon } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useRef } from "react";
+import { useRef, useTransition } from "react";
+import { toast } from "sonner";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { login } from "./actions";
 
@@ -15,11 +16,21 @@ export default function LoginPage() {
 	const emailRef = useRef<HTMLInputElement>(null);
 	const passwordRef = useRef<HTMLInputElement>(null);
 	const t = useTranslations("login");
+	const [isPending, startTransition] = useTransition();
 
 	function fillDemo() {
 		if (emailRef.current) emailRef.current.value = "test@example.com";
 		if (passwordRef.current) passwordRef.current.value = "test1234";
 	}
+
+	const handleSubmit = (formData: FormData) => {
+		startTransition(async () => {
+			const res = await login(formData);
+			if (res?.error) {
+				toast.error(t(res.error as never));
+			}
+		});
+	};
 
 	return (
 		<div className="flex min-h-screen flex-col items-center justify-center bg-background">
@@ -33,7 +44,7 @@ export default function LoginPage() {
 					<p className="text-muted-foreground text-sm">{t("subtitle")}</p>
 				</div>
 				<Card>
-					<form>
+					<form action={handleSubmit}>
 						<CardContent className="mt-4 space-y-4">
 							<div className="grid gap-2">
 								<Label htmlFor="email">{t("email")}</Label>
@@ -60,7 +71,8 @@ export default function LoginPage() {
 							</div>
 						</CardContent>
 						<CardFooter className="flex flex-col gap-4">
-							<Button className="w-full" formAction={login}>
+							<Button className="w-full" disabled={isPending}>
+								{isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 								{t("submit")}
 							</Button>
 							<Button

@@ -78,6 +78,7 @@ const messages: Messages = {
 		noAccount: "Belum punya akun?",
 		signUp: "Daftar",
 		emailPlaceholder: "nama@contoh.com",
+		invalidCredentials: "Email atau kata sandi tidak valid.",
 	},
 	signup: {
 		title: "Buat akun",

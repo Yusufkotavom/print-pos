@@ -76,6 +76,7 @@ const messages = {
 		noAccount: "Don't have an account?",
 		signUp: "Sign up",
 		emailPlaceholder: "name@example.com",
+		invalidCredentials: "Invalid email or password.",
 	},
 	signup: {
 		title: "Create an account",

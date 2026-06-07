@@ -4,16 +4,17 @@ import { Button } from "@finopenpos/ui/components/button";
 import { Card, CardContent, CardFooter } from "@finopenpos/ui/components/card";
 import { Input } from "@finopenpos/ui/components/input";
 import { Label } from "@finopenpos/ui/components/label";
-import { MountainIcon } from "lucide-react";
+import { Loader2, MountainIcon } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useEffect } from "react";
+import { useEffect, useTransition } from "react";
 import { toast } from "sonner";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { signup } from "./actions";
 
 export default function SignupPage() {
 	const t = useTranslations("signup");
+	const [isPending, startTransition] = useTransition();
 
 	useEffect(() => {
 		const params = new URLSearchParams(window.location.search);
@@ -21,6 +22,15 @@ export default function SignupPage() {
 			toast.error(t("signupFailed"));
 		}
 	}, [t]);
+
+	const handleSubmit = (formData: FormData) => {
+		startTransition(async () => {
+			const res = await signup(formData);
+			if (res?.error) {
+				toast.error(t(res.error as never));
+			}
+		});
+	};
 
 	return (
 		<div className="flex min-h-screen flex-col items-center justify-center bg-background">
@@ -34,7 +44,7 @@ export default function SignupPage() {
 					<p className="text-muted-foreground text-sm">{t("subtitle")}</p>
 				</div>
 				<Card>
-					<form>
+					<form action={handleSubmit}>
 						<CardContent className="mt-4 space-y-4">
 							<div className="grid gap-2">
 								<Label htmlFor="name">{t("name")}</Label>
@@ -72,7 +82,8 @@ export default function SignupPage() {
 							</div>
 						</CardContent>
 						<CardFooter className="flex flex-col gap-4">
-							<Button className="w-full" formAction={signup}>
+							<Button className="w-full" disabled={isPending}>
+								{isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 								{t("submit")}
 							</Button>
 							<p className="text-center text-muted-foreground text-sm">

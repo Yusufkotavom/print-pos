@@ -32,7 +32,7 @@ export async function signup(formData: FormData) {
 			cancelledAt: null,
 		});
 	} catch {
-		redirect("/signup?error=signup-failed");
+		return { error: "signupFailed" };
 	}
 
 	revalidatePath("/admin", "layout");

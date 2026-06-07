@@ -15,7 +15,7 @@ export async function login(formData: FormData) {
 			headers: await headers(),
 		});
 	} catch {
-		redirect("/login?error=invalid-credentials");
+		return { error: "invalidCredentials" };
 	}
 
 	revalidatePath("/admin", "layout");
