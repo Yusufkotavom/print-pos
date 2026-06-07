@@ -38,7 +38,10 @@ import type {
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import { usePOSLocalFirst } from "@/hooks/use-pos-local-first";
-import { readCachedProductCategories } from "@/lib/local-db/repo";
+import {
+	readCachedProductCategories,
+	upsertCachedOrder,
+} from "@/lib/local-db/repo";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
 
@@ -588,38 +591,75 @@ export default function POSPage() {
 				paymentMethodLabel={tOrders("paymentMethod")}
 				submitLabel={tOrders("savePayment")}
 				cancelLabel={tc("cancel")}
-				queuedMessage={t("orderQueued")}
 				onOpenChange={(open) => {
 					if (!open) setPendingPaymentOrder(null);
 				}}
-				onQueueOrder={queueOrder}
-				onClearDraft={() => {
+				onSubmitOrder={async (payload) => {
+					const draft = pendingPaymentOrder;
+					if (!draft) return;
+					const localId = -Date.now();
+					const queuedOrder: QueuedPOSOrder & {
+						localId: number;
+						customerId: number;
+						products: { id: number; quantity: number; price: number }[];
+					} = {
+						...draft,
+						localId,
+						customerId: payload.customerId,
+						products: payload.products,
+						paymentMethodId: payload.paymentMethodId,
+						paidAmount: payload.paidAmount,
+						createdAt: new Date().toISOString(),
+						status: "pending",
+					};
+					await upsertCachedOrder({
+						id: localId,
+						order_number: `LOCAL-${Math.abs(localId)}`,
+						customer_id: draft.customer.id,
+						total_amount: draft.total,
+						note: draft.note || null,
+						status: payload.paidAmount >= draft.total ? "completed" : "pending",
+						paid_amount: payload.paidAmount,
+						payment_status:
+							payload.paidAmount >= draft.total
+								? "paid"
+								: payload.paidAmount > 0
+									? "partial"
+									: "unpaid",
+						user_uid: "local",
+						created_at: new Date(),
+						customer: draft.customer,
+					});
+					await queueOrder(queuedOrder);
+					queryClient.invalidateQueries(trpc.orders.list.queryOptions());
+					setSuccessOrder({
+						id: localId,
+						order_number: `LOCAL-${Math.abs(localId)}`,
+						created_at: new Date(),
+						total_amount: draft.total,
+						paid_amount: payload.paidAmount,
+						payment_status:
+							payload.paidAmount >= draft.total
+								? "paid"
+								: payload.paidAmount > 0
+									? "partial"
+									: "unpaid",
+						customer: draft.customer,
+						items: draft.items,
+						note: draft.note,
+						paymentMethodName: paymentMethods.find(
+							(method) => method.id === payload.paymentMethodId,
+						)?.name,
+					});
+					setPendingPaymentOrder(null);
 					setSelectedProducts([]);
 					setSelectedCustomer(null);
 					setOrderNote("");
-					void clearPOSDraft();
-				}}
-				onSubmitOrder={(payload) => {
-					const draft = pendingPaymentOrder;
-					createOrderMutation.mutate(payload, {
-						onError: async () => {
-							if (!draft) return;
-							const queuedOrder: QueuedPOSOrder = {
-								...draft,
-								paymentMethodId: payload.paymentMethodId,
-								paidAmount: payload.paidAmount,
-								createdAt: new Date().toISOString(),
-								status: "pending",
-							};
-							await queueOrder(queuedOrder);
-							setPendingPaymentOrder(null);
-							setSelectedProducts([]);
-							setSelectedCustomer(null);
-							setOrderNote("");
-							await clearPOSDraft();
-							toast.success(t("orderQueued"));
-						},
-					});
+					await clearPOSDraft();
+					toast.success(t("orderQueued"));
+					if (isOnline) {
+						void syncQueuedOrders();
+					}
 				}}
 			/>
 

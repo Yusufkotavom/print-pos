@@ -11,6 +11,7 @@ import { syncReadyQueue } from "@/lib/local-db/sync-engine";
 
 export type QueuedServiceOrder = {
 	clientServiceOrderId: string;
+	localId: number;
 	customerId: number;
 	serviceType: string;
 	estimatedDoneAt?: Date;
@@ -35,7 +36,9 @@ export function createClientServiceOrderId() {
 export function useServiceOrderSync({
 	createServiceOrder,
 }: {
-	createServiceOrder: (payload: QueuedServiceOrder) => Promise<void>;
+	createServiceOrder: (
+		payload: QueuedServiceOrder,
+	) => Promise<{ id?: number } | undefined>;
 }) {
 	const [queueCount, setQueueCount] = useState(0);
 
@@ -50,7 +53,7 @@ export function useServiceOrderSync({
 	const queueServiceOrder = useCallback(
 		async (payload: QueuedServiceOrder) => {
 			await enqueueSyncItem({
-				id: payload.clientServiceOrderId,
+				id: `serviceOrder:create:${payload.localId}`,
 				entity: "serviceOrder",
 				operation: "create",
 				payload,
@@ -89,10 +92,8 @@ export function useServiceOrderSync({
 	const syncQueuedServiceOrders = useCallback(async () => {
 		await syncReadyQueue(
 			{
-				createServiceOrder: async (payload) => {
-					await createServiceOrder(payload as QueuedServiceOrder);
-					return undefined;
-				},
+				createServiceOrder: async (payload) =>
+					createServiceOrder(payload as QueuedServiceOrder),
 			},
 			{ entities: ["serviceOrder"] },
 		);

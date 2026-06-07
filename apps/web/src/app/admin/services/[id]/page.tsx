@@ -62,6 +62,7 @@ import {
 	removeCachedServiceOrder,
 	upsertCachedServiceOrder,
 } from "@/lib/local-db/repo";
+import { syncReadyQueue } from "@/lib/local-db/sync-engine";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
@@ -223,6 +224,30 @@ export default function ServiceDetailPage({
 			status: "pending",
 			retryCount: 0,
 		});
+		if (navigator.onLine) {
+			void syncReadyQueue({
+				updateServiceOrder: (payload) =>
+					updateService.mutateAsync(
+						payload as Parameters<typeof updateService.mutateAsync>[0],
+					),
+				updateServiceOrderStatus: (payload) =>
+					updateStatus.mutateAsync(
+						payload as Parameters<typeof updateStatus.mutateAsync>[0],
+					),
+				receiveServiceOrderPayment: (payload) =>
+					receivePayment.mutateAsync(
+						payload as Parameters<typeof receivePayment.mutateAsync>[0],
+					),
+				updateServiceOrderWarranty: (payload) =>
+					updateWarranty.mutateAsync(
+						payload as Parameters<typeof updateWarranty.mutateAsync>[0],
+					),
+				deleteServiceOrder: (payload) =>
+					deleteService.mutateAsync(
+						payload as Parameters<typeof deleteService.mutateAsync>[0],
+					),
+			});
+		}
 	};
 
 	const updateService = useMutation(
@@ -711,31 +736,19 @@ export default function ServiceDetailPage({
 							onClick={() => {
 								if (!nextStatus) return;
 								const status = nextStatus;
-								if (!isOnline) {
-									const nextService = {
-										...service,
-										status,
-										completed_at: status === "done" ? new Date() : null,
-									};
-									applyLocalService(nextService);
-									void queueServiceAction("updateStatus", {
-										id: service.id,
-										status,
-									});
-									setStatusDialogOpen(false);
-									toast.success("Status queued");
-									if (statusWhatsappEnabled) openWhatsappForStatus(status);
-									return;
-								}
-								updateStatus.mutate(
-									{ id: service.id, status },
-									{
-										onSuccess: () => {
-											setStatusDialogOpen(false);
-											if (statusWhatsappEnabled) openWhatsappForStatus(status);
-										},
-									},
-								);
+								const nextService = {
+									...service,
+									status,
+									completed_at: status === "done" ? new Date() : null,
+								};
+								applyLocalService(nextService);
+								void queueServiceAction("updateStatus", {
+									id: service.id,
+									status,
+								});
+								setStatusDialogOpen(false);
+								toast.success("Status queued");
+								if (statusWhatsappEnabled) openWhatsappForStatus(status);
 							}}
 						>
 							{tc("save")}
@@ -878,34 +891,30 @@ export default function ServiceDetailPage({
 									})),
 									total: editTotal,
 								};
-								if (!isOnline) {
-									applyLocalService({
-										...service,
-										service_type: editServiceType,
-										estimated_done_at: payload.estimatedDoneAt,
-										customer_note: editCustomerNote,
-										internal_note: editInternalNote,
-										details_json: { text: editDetailText },
-										total_amount: editTotal,
-										items: editItems.map((item, index) => ({
-											id: index + 1,
-											product_id: item.product_id ?? item.id,
-											line_type:
-												item.product_type === "service" ? "service" : "product",
-											item_name: item.name,
-											item_type: item.product_type,
-											quantity: item.quantity,
-											price: item.price,
-											cost: 0,
-											note: null,
-										})),
-									});
-									void queueServiceAction("update", payload);
-									setEditOpen(false);
-									toast.success("Service update queued");
-									return;
-								}
-								updateService.mutate(payload);
+								applyLocalService({
+									...service,
+									service_type: editServiceType,
+									estimated_done_at: payload.estimatedDoneAt,
+									customer_note: editCustomerNote,
+									internal_note: editInternalNote,
+									details_json: { text: editDetailText },
+									total_amount: editTotal,
+									items: editItems.map((item, index) => ({
+										id: index + 1,
+										product_id: item.product_id ?? item.id,
+										line_type:
+											item.product_type === "service" ? "service" : "product",
+										item_name: item.name,
+										item_type: item.product_type,
+										quantity: item.quantity,
+										price: item.price,
+										cost: 0,
+										note: null,
+									})),
+								});
+								void queueServiceAction("update", payload);
+								setEditOpen(false);
+								toast.success("Service update queued");
 							}}
 						/>
 					</div>
@@ -996,19 +1005,15 @@ export default function ServiceDetailPage({
 											: Number.parseInt(warrantyValue || "0", 10) || undefined,
 									warrantyNotes,
 								};
-								if (!isOnline) {
-									applyLocalService({
-										...service,
-										warranty_unit: warrantyUnit,
-										warranty_value: payload.warrantyValue ?? null,
-										warranty_notes: warrantyNotes,
-									});
-									void queueServiceAction("updateWarranty", payload);
-									setWarrantyDialogOpen(false);
-									toast.success("Warranty queued");
-									return;
-								}
-								updateWarranty.mutate(payload);
+								applyLocalService({
+									...service,
+									warranty_unit: warrantyUnit,
+									warranty_value: payload.warrantyValue ?? null,
+									warranty_notes: warrantyNotes,
+								});
+								void queueServiceAction("updateWarranty", payload);
+								setWarrantyDialogOpen(false);
+								toast.success("Warranty queued");
 							}}
 						>
 							{tc("save")}
@@ -1034,34 +1039,26 @@ export default function ServiceDetailPage({
 				isPending={receivePayment.isPending}
 				onSubmit={({ paymentMethodId, amount }) => {
 					const payload = { id: service.id, paymentMethodId, amount };
-					if (!isOnline) {
-						const paidAmount = service.paid_amount + amount;
-						applyLocalService({
-							...service,
-							paid_amount: paidAmount,
-							payment_status:
-								paidAmount >= service.total_amount ? "paid" : "partial",
-						});
-						void queueServiceAction("receivePayment", payload);
-						setPaymentOpen(false);
-						toast.success("Payment queued");
-						return;
-					}
-					receivePayment.mutate(payload);
+					const paidAmount = service.paid_amount + amount;
+					applyLocalService({
+						...service,
+						paid_amount: paidAmount,
+						payment_status:
+							paidAmount >= service.total_amount ? "paid" : "partial",
+					});
+					void queueServiceAction("receivePayment", payload);
+					setPaymentOpen(false);
+					toast.success("Payment queued");
 				}}
 			/>
 			<DeleteConfirmationDialog
 				open={deleteOpen}
 				onOpenChange={setDeleteOpen}
 				onConfirm={() => {
-					if (!isOnline) {
-						void queueServiceAction("delete", { id: service.id });
-						void removeCachedServiceOrder(service.id);
-						toast.success("Delete queued");
-						window.location.href = "/admin/services";
-						return;
-					}
-					deleteService.mutate({ id: service.id });
+					void queueServiceAction("delete", { id: service.id });
+					void removeCachedServiceOrder(service.id);
+					toast.success("Delete queued");
+					window.location.href = "/admin/services";
 				}}
 				description="Service dengan pembayaran tidak bisa dihapus."
 			/>

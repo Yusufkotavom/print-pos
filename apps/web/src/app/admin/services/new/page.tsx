@@ -14,7 +14,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@finopenpos/ui/components/dialog";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { PlusCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -54,7 +54,6 @@ function toDateOnly(value: Date | undefined) {
 export default function NewServicePage() {
 	const trpc = useTRPC();
 	const router = useRouter();
-	const queryClient = useQueryClient();
 	const t = useTranslations("services");
 	const tPos = useTranslations("pos");
 	const locale = useLocale();
@@ -94,6 +93,18 @@ export default function NewServicePage() {
 		trpc.serviceTypes.list.queryOptions(),
 	);
 	const [serviceType, setServiceType] = useState("other");
+	const serviceTypeOptions = useMemo(
+		() =>
+			serviceTypes.length
+				? serviceTypes
+				: [{ id: 0, name: t("serviceTypeOther"), value: "other" }],
+		[serviceTypes, t],
+	);
+	const selectedServiceType = serviceTypeOptions.some(
+		(item) => item.value === serviceType,
+	)
+		? serviceType
+		: (serviceTypeOptions[0]?.value ?? "other");
 	const [customerNote, setCustomerNote] = useState("");
 	const [internalNote, setInternalNote] = useState("");
 	const [estimatedDoneAt, setEstimatedDoneAt] = useState<Date | undefined>();
@@ -151,7 +162,7 @@ export default function NewServicePage() {
 		void saveDraft(SERVICE_DRAFT_KEY, {
 			items: selectedProducts,
 			customer: selectedCustomer,
-			serviceType,
+			serviceType: selectedServiceType,
 			customerNote,
 			internalNote,
 			detailText,
@@ -160,7 +171,7 @@ export default function NewServicePage() {
 	}, [
 		selectedProducts,
 		selectedCustomer,
-		serviceType,
+		selectedServiceType,
 		customerNote,
 		internalNote,
 		detailText,
@@ -193,39 +204,14 @@ export default function NewServicePage() {
 	);
 
 	const createMutation = useMutation(
-		trpc.serviceOrders.create.mutationOptions({
-			onSuccess: async (serviceOrder, variables) => {
-				if (variables.clientServiceOrderId) {
-					await markServiceOrderSynced(variables.clientServiceOrderId);
-				}
-				await clearDraft(SERVICE_DRAFT_KEY);
-				queryClient.invalidateQueries(trpc.serviceOrders.list.queryOptions());
-				toast.success(t("created"));
-				router.push(`/admin/services/${serviceOrder.id}`);
-			},
-			onError: async (error, variables) => {
-				if (variables.clientServiceOrderId) {
-					await markServiceOrderFailed(
-						variables.clientServiceOrderId,
-						error.message,
-					);
-				}
-				toast.error(error.message || t("createError"));
-			},
-		}),
+		trpc.serviceOrders.create.mutationOptions(),
 	);
 
-	const {
-		queueCount,
-		queueServiceOrder,
-		markServiceOrderSynced,
-		markServiceOrderFailed,
-		syncQueuedServiceOrders,
-	} = useServiceOrderSync({
-		createServiceOrder: async (payload) => {
-			await createMutation.mutateAsync(payload);
-		},
-	});
+	const { queueCount, queueServiceOrder, syncQueuedServiceOrders } =
+		useServiceOrderSync({
+			createServiceOrder: async ({ localId: _localId, ...payload }) =>
+				createMutation.mutateAsync(payload),
+		});
 
 	useEffect(() => {
 		void syncQueuedServiceOrders();
@@ -269,10 +255,12 @@ export default function NewServicePage() {
 	const canCreate = selectedCustomer && selectedProducts.length > 0;
 	const handleCreateService = () => {
 		if (!selectedCustomer) return;
+		const localId = -Date.now();
 		const payload: QueuedServiceOrder = {
 			clientServiceOrderId: createClientServiceOrderId(),
+			localId,
 			customerId: selectedCustomer.id,
-			serviceType,
+			serviceType: selectedServiceType,
 			estimatedDoneAt: toDateOnly(estimatedDoneAt),
 			customerNote,
 			internalNote,
@@ -286,55 +274,53 @@ export default function NewServicePage() {
 			})),
 			total,
 		};
-		if (!navigator.onLine) {
-			void queueServiceOrder(payload).then(async () => {
-				await upsertCachedServiceOrder({
-					id: -Date.now(),
-					service_number: payload.clientServiceOrderId,
-					customer_id: selectedCustomer.id,
-					service_type: serviceType,
-					status: "in_progress",
-					estimated_done_at: payload.estimatedDoneAt ?? null,
-					customer_note: customerNote || null,
-					internal_note: internalNote || null,
-					details_json: { text: detailText },
-					total_amount: total,
-					paid_amount: 0,
-					payment_status: "unpaid",
-					user_uid: "local",
-					created_at: new Date(),
-					warranty_unit: "none",
-					warranty_value: null,
-					warranty_started_at: null,
-					warranty_until: null,
-					warranty_notes: null,
-					completed_at: null,
-					client_service_order_id: payload.clientServiceOrderId,
-					customer: { name: selectedCustomer.name, phone: "" },
-				});
-				await clearDraft(SERVICE_DRAFT_KEY);
-				setSelectedProducts([]);
-				setSelectedCustomer(null);
-				setCustomerNote("");
-				setInternalNote("");
-				setDetailText("");
-				setEstimatedDoneAt(undefined);
-				toast.success(t("serviceQueued"));
-			});
-			return;
-		}
-		createMutation.mutate(payload, {
-			onError: async () => {
-				await queueServiceOrder(payload);
-				await clearDraft(SERVICE_DRAFT_KEY);
-				setSelectedProducts([]);
-				setSelectedCustomer(null);
-				setCustomerNote("");
-				setInternalNote("");
-				setDetailText("");
-				setEstimatedDoneAt(undefined);
-				toast.success(t("serviceQueued"));
-			},
+		const optimisticService = {
+			id: localId,
+			service_number: payload.clientServiceOrderId,
+			customer_id: selectedCustomer.id,
+			service_type: selectedServiceType,
+			status: "in_progress",
+			estimated_done_at: payload.estimatedDoneAt ?? null,
+			customer_note: customerNote || null,
+			internal_note: internalNote || null,
+			details_json: { text: detailText },
+			total_amount: total,
+			paid_amount: 0,
+			payment_status: "unpaid",
+			user_uid: "local",
+			created_at: new Date(),
+			warranty_unit: "none",
+			warranty_value: null,
+			warranty_started_at: null,
+			warranty_until: null,
+			warranty_notes: null,
+			completed_at: null,
+			client_service_order_id: payload.clientServiceOrderId,
+			customer: { name: selectedCustomer.name, phone: "" },
+			items: payload.items.map((item, index) => ({
+				id: index + 1,
+				product_id: item.id,
+				line_type: item.lineType,
+				item_name: item.name ?? "",
+				item_type: item.lineType,
+				quantity: item.quantity,
+				price: item.price,
+				cost: 0,
+				note: item.note ?? null,
+			})),
+		};
+		void queueServiceOrder(payload).then(async () => {
+			await upsertCachedServiceOrder(optimisticService);
+			await clearDraft(SERVICE_DRAFT_KEY);
+			setSelectedProducts([]);
+			setSelectedCustomer(null);
+			setCustomerNote("");
+			setInternalNote("");
+			setDetailText("");
+			setEstimatedDoneAt(undefined);
+			toast.success(t("serviceQueued"));
+			router.push(`/admin/services/${localId}`);
+			if (navigator.onLine) void syncQueuedServiceOrders();
 		});
 	};
 	const cartPanel = (
@@ -423,8 +409,8 @@ export default function NewServicePage() {
 								</Button>
 							</div>
 							<ServiceOrderFields
-								serviceTypes={serviceTypes}
-								serviceType={serviceType}
+								serviceTypes={serviceTypeOptions}
+								serviceType={selectedServiceType}
 								estimatedDoneAt={estimatedDoneAt}
 								detailText={detailText}
 								customerNote={customerNote}

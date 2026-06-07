@@ -45,12 +45,21 @@ import { z } from "zod/v4";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { FormattedNumberInput } from "@/components/formatted-number-input";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
-import { readCachedOrders, replaceCachedOrders } from "@/lib/local-db/repo";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import {
+	enqueueSyncItem,
+	readCachedOrders,
+	removeCachedOrder,
+	replaceCachedOrders,
+	upsertCachedOrder,
+} from "@/lib/local-db/repo";
+import { syncReadyQueue } from "@/lib/local-db/sync-engine";
 import { useTRPC } from "@/lib/trpc/client";
-import type { RouterOutputs } from "@/lib/trpc/router";
+import type { RouterInputs, RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
 
 type Order = RouterOutputs["orders"]["list"][number];
+type OrderUpdateInput = RouterInputs["orders"]["update"];
 type OrderStatus = "completed" | "pending" | "cancelled";
 
 type PaymentStatus = "paid" | "partial" | "unpaid";
@@ -253,15 +262,18 @@ export default function OrdersPage() {
 	const [paymentFilter, setPaymentFilter] = useState("all");
 	const [statusFilter, setStatusFilter] = useState("all");
 	const [editCustomerName, setEditCustomerName] = useState("");
+	const isOnline = useOnlineStatus();
+	const isOfflineMode = !isOnline || !!error;
 
 	useEffect(() => {
 		void readCachedOrders<Order>().then(setCachedOrders);
 	}, []);
 
 	useEffect(() => {
+		if (isLoading || error) return;
+		setCachedOrders(remoteOrders);
 		void replaceCachedOrders(remoteOrders);
-		if (remoteOrders.length || !isLoading) setCachedOrders(remoteOrders);
-	}, [remoteOrders, isLoading]);
+	}, [remoteOrders, error, isLoading]);
 
 	const invalidateKeys = trpc.orders.list.queryOptions().queryKey;
 
@@ -280,18 +292,57 @@ export default function OrdersPage() {
 		errorMessage: t("deleteError"),
 	});
 
+	useEffect(() => {
+		if (!isOnline) return;
+		void syncReadyQueue({
+			updateOrder: (payload) =>
+				updateMutation.mutateAsync(payload as OrderUpdateInput),
+			deleteOrder: (payload) =>
+				deleteMutation.mutateAsync(payload as { id: number }),
+		});
+	}, [deleteMutation, isOnline, updateMutation]);
+
+	const applyOfflineOrderUpdate = async (payload: OrderUpdateInput) => {
+		const current = orders.find((item) => item.id === payload.id);
+		if (!current) return;
+		const nextOrder = {
+			...current,
+			total_amount: payload.total_amount ?? current.total_amount,
+			status: payload.status ?? current.status,
+			note: payload.note ?? current.note,
+		} satisfies Order;
+		await upsertCachedOrder(nextOrder);
+		setCachedOrders((currentRows) =>
+			currentRows.map((item) => (item.id === payload.id ? nextOrder : item)),
+		);
+		await enqueueSyncItem({
+			id: `order:update:${payload.id}`,
+			entity: "order",
+			operation: "update",
+			payload,
+			status: "pending",
+			retryCount: 0,
+		});
+	};
+
 	const form = useForm({
 		defaultValues: { total: "", status: "pending" as OrderStatus },
 		validators: {
 			onSubmit: orderEditSchema,
 		},
-		onSubmit: ({ value }) => {
+		onSubmit: async ({ value }) => {
 			if (editingId !== null) {
-				updateMutation.mutate({
+				const payload = {
 					id: editingId,
 					total_amount: Math.round(Number.parseFloat(value.total) * 100),
 					status: value.status,
-				});
+				};
+				if (isOfflineMode) {
+					await applyOfflineOrderUpdate(payload);
+					setIsDialogOpen(false);
+					return;
+				}
+				updateMutation.mutate(payload);
 			}
 		},
 	});
@@ -318,9 +369,24 @@ export default function OrdersPage() {
 		setIsDialogOpen(true);
 	};
 
-	const handleDelete = () => {
+	const handleDelete = async () => {
 		if (deleteId !== null) {
-			deleteMutation.mutate({ id: deleteId });
+			if (isOfflineMode) {
+				await removeCachedOrder(deleteId);
+				setCachedOrders((current) =>
+					current.filter((item) => item.id !== deleteId),
+				);
+				await enqueueSyncItem({
+					id: `order:delete:${deleteId}`,
+					entity: "order",
+					operation: "delete",
+					payload: { id: deleteId },
+					status: "pending",
+					retryCount: 0,
+				});
+			} else {
+				deleteMutation.mutate({ id: deleteId });
+			}
 			setIsDeleteOpen(false);
 			setDeleteId(null);
 		}

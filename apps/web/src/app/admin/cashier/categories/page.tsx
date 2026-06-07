@@ -42,27 +42,58 @@ import {
 	TrashIcon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod/v4";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import {
+	enqueueSyncItem,
+	readCachedTransactionCategories,
+	removeCachedTransactionCategory,
+	replaceCachedTransactionCategories,
+	upsertCachedTransactionCategory,
+} from "@/lib/local-db/repo";
+import { syncReadyQueue } from "@/lib/local-db/sync-engine";
 import { useTRPC } from "@/lib/trpc/client";
-import type { RouterOutputs } from "@/lib/trpc/router";
+import type { RouterInputs, RouterOutputs } from "@/lib/trpc/router";
 
 type Category = RouterOutputs["transactionCategories"]["list"][number];
+type CategoryCreateInput = RouterInputs["transactionCategories"]["create"];
+type CategoryUpdateInput = RouterInputs["transactionCategories"]["update"];
 type CategoryType = "income" | "expense";
 
 export default function CategoriesPage() {
 	const trpc = useTRPC();
-	const { data: categories = [], isLoading } = useQuery(
-		trpc.transactionCategories.list.queryOptions(),
-	);
+	const {
+		data: remoteCategories = [],
+		isLoading,
+		error,
+	} = useQuery(trpc.transactionCategories.list.queryOptions());
+	const [cachedCategories, setCachedCategories] = useState<Category[]>([]);
+	const hasCachedCategories = cachedCategories.length > 0;
+	const categories =
+		(isLoading || error) && hasCachedCategories
+			? cachedCategories
+			: remoteCategories;
 	const t = useTranslations("categories");
 	const tc = useTranslations("common");
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 	const [editingId, setEditingId] = useState<number | null>(null);
 	const [deleteId, setDeleteId] = useState<number | null>(null);
+	const isOnline = useOnlineStatus();
+	const isOfflineMode = !isOnline || !!error;
+
+	useEffect(() => {
+		void readCachedTransactionCategories<Category>().then(setCachedCategories);
+	}, []);
+
+	useEffect(() => {
+		if (isLoading || error) return;
+		setCachedCategories(remoteCategories);
+		void replaceCachedTransactionCategories(remoteCategories);
+	}, [remoteCategories, error, isLoading]);
 
 	const categorySchema = z.object({
 		name: z.string().min(1, t("nameRequired")),
@@ -102,6 +133,28 @@ export default function CategoriesPage() {
 		errorMessage: t("deleteError"),
 	});
 
+	useEffect(() => {
+		if (!isOnline) return;
+		void syncReadyQueue({
+			createTransactionCategory: (payload) =>
+				createMutation.mutateAsync(payload as CategoryCreateInput),
+			updateTransactionCategory: (payload) =>
+				updateMutation.mutateAsync(payload as CategoryUpdateInput),
+			deleteTransactionCategory: (payload) =>
+				deleteMutation.mutateAsync(payload as { id: number }),
+		});
+	}, [createMutation, deleteMutation, isOnline, updateMutation]);
+
+	const buildOptimisticCategory = (id: number, value: CategoryCreateInput) =>
+		({
+			id,
+			name: value.name,
+			type: value.type,
+			user_uid: categories.find((item) => item.id === id)?.user_uid ?? "local",
+			created_at:
+				categories.find((item) => item.id === id)?.created_at ?? new Date(),
+		}) satisfies Category;
+
 	const form = useForm({
 		defaultValues: {
 			name: "",
@@ -110,7 +163,50 @@ export default function CategoriesPage() {
 		validators: {
 			onSubmit: categorySchema,
 		},
-		onSubmit: ({ value }) => {
+		onSubmit: async ({ value }) => {
+			if (isOfflineMode) {
+				if (isEditing) {
+					const nextCategory = buildOptimisticCategory(editingId, value);
+					await upsertCachedTransactionCategory(nextCategory);
+					setCachedCategories((current) =>
+						current
+							.map((item) => (item.id === editingId ? nextCategory : item))
+							.sort(
+								(a, b) =>
+									a.type.localeCompare(b.type) || a.name.localeCompare(b.name),
+							),
+					);
+					await enqueueSyncItem({
+						id: `transactionCategory:update:${editingId}`,
+						entity: "transactionCategory",
+						operation: "update",
+						payload: { id: editingId, ...value },
+						status: "pending",
+						retryCount: 0,
+					});
+				} else {
+					const localId = -Date.now();
+					const nextCategory = buildOptimisticCategory(localId, value);
+					await upsertCachedTransactionCategory(nextCategory);
+					setCachedCategories((current) =>
+						[...current, nextCategory].sort(
+							(a, b) =>
+								a.type.localeCompare(b.type) || a.name.localeCompare(b.name),
+						),
+					);
+					await enqueueSyncItem({
+						id: `transactionCategory:create:${localId}`,
+						entity: "transactionCategory",
+						operation: "create",
+						payload: { localId, ...value },
+						status: "pending",
+						retryCount: 0,
+					});
+				}
+				setIsDialogOpen(false);
+				form.reset();
+				return;
+			}
 			if (isEditing) {
 				updateMutation.mutate({ id: editingId, ...value });
 			} else {
@@ -132,9 +228,24 @@ export default function CategoriesPage() {
 		setIsDialogOpen(true);
 	};
 
-	const handleDelete = () => {
+	const handleDelete = async () => {
 		if (deleteId !== null) {
-			deleteMutation.mutate({ id: deleteId });
+			if (isOfflineMode) {
+				await removeCachedTransactionCategory(deleteId);
+				setCachedCategories((current) =>
+					current.filter((item) => item.id !== deleteId),
+				);
+				await enqueueSyncItem({
+					id: `transactionCategory:delete:${deleteId}`,
+					entity: "transactionCategory",
+					operation: "delete",
+					payload: { id: deleteId },
+					status: "pending",
+					retryCount: 0,
+				});
+			} else {
+				deleteMutation.mutate({ id: deleteId });
+			}
 			setIsDeleteOpen(false);
 			setDeleteId(null);
 		}
@@ -177,7 +288,7 @@ export default function CategoriesPage() {
 		},
 	];
 
-	if (isLoading) {
+	if (isLoading && !hasCachedCategories) {
 		return (
 			<Card className="flex flex-col gap-6 p-6">
 				<CardHeader className="p-0">

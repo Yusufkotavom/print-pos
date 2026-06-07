@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+	bigint,
 	boolean,
 	index,
 	integer,
@@ -27,7 +28,7 @@ export const plans = pgTable(
 	{
 		id: serial("id").primaryKey(),
 		name: varchar("name", { length: 255 }).notNull(),
-		price: integer("price").notNull().default(0),
+		price: bigint("price", { mode: "number" }).notNull().default(0),
 		interval: varchar("interval", { length: 20 }).notNull().default("month"),
 		features: jsonb("features").$type<string[]>().notNull().default([]),
 		status: varchar("status", { length: 20 }).notNull().default("active"),
@@ -72,11 +73,11 @@ export const products = pgTable("products", {
 	id: serial("id").primaryKey(),
 	name: varchar("name", { length: 255 }).notNull(),
 	description: text("description"),
-	price: integer("price").notNull(),
-	cost: integer("cost").default(0).notNull(),
+	price: bigint("price", { mode: "number" }).notNull(),
+	cost: bigint("cost", { mode: "number" }).default(0).notNull(),
 	in_stock: integer("in_stock").notNull(),
 	track_stock: boolean("track_stock").default(true).notNull(),
-	wholesale_price: integer("wholesale_price"),
+	wholesale_price: bigint("wholesale_price", { mode: "number" }),
 	wholesale_min_qty: integer("wholesale_min_qty"),
 	product_type: varchar("product_type", { length: 20 })
 		.default("product")
@@ -123,11 +124,11 @@ export const orders = pgTable("orders", {
 	order_number: varchar("order_number", { length: 32 }),
 	client_order_id: varchar("client_order_id", { length: 64 }).unique(),
 	customer_id: integer("customer_id").references(() => customers.id),
-	total_amount: integer("total_amount").notNull(),
+	total_amount: bigint("total_amount", { mode: "number" }).notNull(),
 	note: text("note"),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
 	status: varchar("status", { length: 20 }),
-	paid_amount: integer("paid_amount").default(0).notNull(),
+	paid_amount: bigint("paid_amount", { mode: "number" }).default(0).notNull(),
 	payment_status: varchar("payment_status", { length: 20 })
 		.default("unpaid")
 		.notNull(),
@@ -143,8 +144,8 @@ export const orderItems = pgTable("order_items", {
 	item_name: varchar("item_name", { length: 255 }).default("").notNull(),
 	item_type: varchar("item_type", { length: 20 }).default("product").notNull(),
 	quantity: integer("quantity").notNull(),
-	price: integer("price").notNull(),
-	cost: integer("cost").default(0).notNull(),
+	price: bigint("price", { mode: "number" }).notNull(),
+	cost: bigint("cost", { mode: "number" }).default(0).notNull(),
 	note: text("note"),
 	created_at: timestamp("created_at").defaultNow(),
 });
@@ -164,8 +165,8 @@ export const serviceOrders = pgTable("service_orders", {
 	customer_note: text("customer_note"),
 	internal_note: text("internal_note"),
 	details_json: jsonb("details_json"),
-	total_amount: integer("total_amount").notNull().default(0),
-	paid_amount: integer("paid_amount").notNull().default(0),
+	total_amount: bigint("total_amount", { mode: "number" }).notNull().default(0),
+	paid_amount: bigint("paid_amount", { mode: "number" }).notNull().default(0),
 	payment_status: varchar("payment_status", { length: 20 })
 		.default("unpaid")
 		.notNull(),
@@ -193,8 +194,8 @@ export const serviceOrderItems = pgTable("service_order_items", {
 	item_name: varchar("item_name", { length: 255 }).notNull(),
 	item_type: varchar("item_type", { length: 20 }).default("product").notNull(),
 	quantity: integer("quantity").notNull(),
-	price: integer("price").notNull(),
-	cost: integer("cost").default(0).notNull(),
+	price: bigint("price", { mode: "number" }).notNull(),
+	cost: bigint("cost", { mode: "number" }).default(0).notNull(),
 	note: text("note"),
 	created_at: timestamp("created_at").defaultNow(),
 });
@@ -224,7 +225,7 @@ export const payments = pgTable("payments", {
 	payment_method_id: integer("payment_method_id").references(
 		() => paymentMethods.id,
 	),
-	amount: integer("amount").notNull(),
+	amount: bigint("amount", { mode: "number" }).notNull(),
 	type: varchar("type", { length: 20 }).notNull().default("payment"),
 	status: varchar("status", { length: 20 }).notNull().default("completed"),
 	notes: text("notes"),
@@ -244,7 +245,7 @@ export const transactions = pgTable("transactions", {
 	payment_method_id: integer("payment_method_id").references(
 		() => paymentMethods.id,
 	),
-	amount: integer("amount").notNull(),
+	amount: bigint("amount", { mode: "number" }).notNull(),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
 	type: varchar("type", { length: 20 }),
 	category: varchar("category", { length: 100 }),

@@ -46,13 +46,26 @@ import { POSCartPanel } from "@/components/pos-cart-panel";
 import { POSProductCatalog } from "@/components/pos-product-catalog";
 import type { POSProductItem } from "@/components/pos-types";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import {
+	enqueueSyncItem,
+	readCachedOrder,
+	removeCachedOrder,
+	upsertCachedOrder,
+} from "@/lib/local-db/repo";
+import { syncReadyQueue } from "@/lib/local-db/sync-engine";
 import { useTRPC } from "@/lib/trpc/client";
+import type { RouterInputs, RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
 
 const PDFDownloadLink = dynamic(
 	() => import("@react-pdf/renderer").then((mod) => mod.PDFDownloadLink),
 	{ ssr: false },
 );
+
+type OrderDetail = NonNullable<RouterOutputs["orders"]["get"]>;
+type OrderUpdateInput = RouterInputs["orders"]["update"];
+type OrderPaymentInput = RouterInputs["orders"]["receivePayment"];
 
 function toWhatsappUrl(phone: string | null | undefined, message: string) {
 	if (!phone) return null;
@@ -74,9 +87,14 @@ export default function OrderDetailPage({
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
 	const router = useRouter();
-	const { data: order, isLoading } = useQuery(
-		trpc.orders.get.queryOptions({ id: orderId }),
-	);
+	const {
+		data: remoteOrder,
+		isLoading,
+		error,
+	} = useQuery(trpc.orders.get.queryOptions({ id: orderId }));
+	const [cachedOrder, setCachedOrder] = useState<OrderDetail | null>(null);
+	const order =
+		error && cachedOrder ? cachedOrder : (remoteOrder ?? cachedOrder);
 	const { data: paymentMethods = [] } = useQuery(
 		trpc.paymentMethods.list.queryOptions(),
 	);
@@ -97,10 +115,22 @@ export default function OrderDetailPage({
 	const [selectedCategory, setSelectedCategory] = useState("all");
 	const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 	const search = useDebouncedValue(productSearch, 250);
+	const isOnline = useOnlineStatus();
+	const isOfflineMode = !isOnline || !!error;
 
 	useEffect(() => {
 		setIsMounted(true);
 	}, []);
+
+	useEffect(() => {
+		void readCachedOrder<OrderDetail>(orderId).then(setCachedOrder);
+	}, [orderId]);
+
+	useEffect(() => {
+		if (!remoteOrder || error) return;
+		setCachedOrder(remoteOrder);
+		void upsertCachedOrder(remoteOrder);
+	}, [remoteOrder, error]);
 
 	const receivePaymentMutation = useMutation(
 		trpc.orders.receivePayment.mutationOptions({
@@ -142,6 +172,23 @@ export default function OrderDetailPage({
 		}),
 	);
 
+	useEffect(() => {
+		if (!isOnline) return;
+		void syncReadyQueue({
+			updateOrder: (payload) =>
+				updateOrderMutation.mutateAsync(payload as OrderUpdateInput),
+			deleteOrder: (payload) =>
+				deleteOrderMutation.mutateAsync(payload as { id: number }),
+			receiveOrderPayment: (payload) =>
+				receivePaymentMutation.mutateAsync(payload as OrderPaymentInput),
+		});
+	}, [
+		deleteOrderMutation,
+		isOnline,
+		receivePaymentMutation,
+		updateOrderMutation,
+	]);
+
 	const productCategories = useMemo(() => {
 		const names = products
 			.map((product) => product.category)
@@ -164,6 +211,30 @@ export default function OrderDetailPage({
 		(sum, item) => sum + item.price * item.quantity,
 		0,
 	);
+
+	const updateCachedOrderState = async (nextOrder: OrderDetail) => {
+		setCachedOrder(nextOrder);
+		await upsertCachedOrder(nextOrder);
+		queryClient.setQueryData(
+			trpc.orders.get.queryKey({ id: orderId }),
+			nextOrder,
+		);
+		queryClient.setQueryData(
+			trpc.orders.list.queryKey(),
+			(current: RouterOutputs["orders"]["list"] | undefined) =>
+				current?.map((item) => {
+					if (item.id !== nextOrder.id) return item;
+					return {
+						...item,
+						total_amount: nextOrder.total_amount,
+						paid_amount: nextOrder.paid_amount,
+						payment_status: nextOrder.payment_status,
+						status: nextOrder.status,
+						note: nextOrder.note,
+					};
+				}),
+		);
+	};
 
 	if (isLoading) {
 		return (
@@ -217,10 +288,59 @@ export default function OrderDetailPage({
 		.join("\n");
 	const whatsappUrl = toWhatsappUrl(order.customer?.phone, whatsappMessage);
 
-	const handleReceivePayment = (data: {
+	const handleReceivePayment = async (data: {
 		paymentMethodId: number;
 		amount: number;
 	}) => {
+		if (isOfflineMode) {
+			const amount = Math.min(data.amount, remainingAmount);
+			const nextPaidAmount = order.paid_amount + amount;
+			const nextPaymentStatus =
+				nextPaidAmount >= order.total_amount
+					? "paid"
+					: nextPaidAmount > 0
+						? "partial"
+						: "unpaid";
+			const paymentMethodName = paymentMethods.find(
+				(item) => item.id === data.paymentMethodId,
+			)?.name;
+			const nextOrder = {
+				...order,
+				paid_amount: nextPaidAmount,
+				payment_status: nextPaymentStatus,
+				status: nextPaymentStatus === "paid" ? "completed" : order.status,
+				payments: [
+					...order.payments,
+					{
+						id: -Date.now(),
+						payment_number: null,
+						amount,
+						type: "payment",
+						status: "completed",
+						paid_at: new Date(),
+						paymentMethod: paymentMethodName
+							? { name: paymentMethodName }
+							: null,
+					},
+				],
+			} satisfies OrderDetail;
+			await updateCachedOrderState(nextOrder);
+			await enqueueSyncItem({
+				id: `order:receivePayment:${order.id}:${Date.now()}`,
+				entity: "order",
+				operation: "receivePayment",
+				payload: {
+					id: order.id,
+					paymentMethodId: data.paymentMethodId,
+					amount,
+				},
+				status: "pending",
+				retryCount: 0,
+			});
+			setIsPaymentDialogOpen(false);
+			toast.success(t("paymentReceived"));
+			return;
+		}
 		receivePaymentMutation.mutate({
 			id: order.id,
 			paymentMethodId: data.paymentMethodId,
@@ -592,8 +712,8 @@ export default function OrderDetailPage({
 									prev.filter((item) => item.id !== productId),
 								)
 							}
-							onCreateOrder={() =>
-								updateOrderMutation.mutate({
+							onCreateOrder={() => {
+								const payload = {
 									id: order.id,
 									note: editNote,
 									products: editItems.map((item) => ({
@@ -602,8 +722,44 @@ export default function OrderDetailPage({
 										price: item.price,
 									})),
 									total: editTotal,
-								})
-							}
+								};
+								if (isOfflineMode) {
+									const nextOrder = {
+										...order,
+										note: editNote,
+										total_amount: editTotal,
+										orderItems: editItems.map((item, index) => ({
+											id: -(Date.now() + index),
+											product_id: item.product_id ?? null,
+											item_name: item.name,
+											item_type: item.product_type,
+											quantity: item.quantity,
+											price: item.price,
+											cost: 0,
+											note: null,
+											product: {
+												name: item.name,
+												category: item.category || null,
+												product_type: item.product_type,
+											},
+										})),
+									} satisfies OrderDetail;
+									void updateCachedOrderState(nextOrder).then(() =>
+										enqueueSyncItem({
+											id: `order:update:${order.id}`,
+											entity: "order",
+											operation: "update",
+											payload,
+											status: "pending",
+											retryCount: 0,
+										}),
+									);
+									setEditOpen(false);
+									toast.success(t("updated"));
+									return;
+								}
+								updateOrderMutation.mutate(payload);
+							}}
 						/>
 					</div>
 					<DialogFooter>
@@ -617,7 +773,28 @@ export default function OrderDetailPage({
 			<DeleteConfirmationDialog
 				open={deleteOpen}
 				onOpenChange={setDeleteOpen}
-				onConfirm={() => deleteOrderMutation.mutate({ id: order.id })}
+				onConfirm={() => {
+					if (isOfflineMode) {
+						void removeCachedOrder(order.id).then(() =>
+							enqueueSyncItem({
+								id: `order:delete:${order.id}`,
+								entity: "order",
+								operation: "delete",
+								payload: { id: order.id },
+								status: "pending",
+								retryCount: 0,
+							}),
+						);
+						queryClient.setQueryData(
+							trpc.orders.list.queryOptions().queryKey,
+							(current: RouterOutputs["orders"]["list"] | undefined) =>
+								current?.filter((item) => item.id !== order.id),
+						);
+						router.push("/admin/orders");
+						return;
+					}
+					deleteOrderMutation.mutate({ id: order.id });
+				}}
 			/>
 		</div>
 	);

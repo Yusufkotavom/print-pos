@@ -47,47 +47,80 @@ import { z } from "zod/v4";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { FormattedNumberInput } from "@/components/formatted-number-input";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
+import { useOnlineStatus } from "@/hooks/use-online-status";
 import {
+	enqueueSyncItem,
+	readCachedTransactionCategories,
 	readCachedTransactions,
+	removeCachedTransaction,
+	replaceCachedTransactionCategories,
 	replaceCachedTransactions,
+	upsertCachedTransaction,
 } from "@/lib/local-db/repo";
+import { syncReadyQueue } from "@/lib/local-db/sync-engine";
 import { useTRPC } from "@/lib/trpc/client";
-import type { RouterOutputs } from "@/lib/trpc/router";
+import type { RouterInputs, RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 type Transaction = RouterOutputs["transactions"]["list"][number];
+type TransactionCategory =
+	RouterOutputs["transactionCategories"]["list"][number];
+type TransactionCreateInput = RouterInputs["transactions"]["create"];
+type TransactionUpdateInput = RouterInputs["transactions"]["update"];
 type TransactionType = "income" | "expense";
 type TransactionStatus = "completed" | "pending";
 
 export default function Cashier() {
 	const trpc = useTRPC();
-	const { data: remoteTransactions = [], isLoading } = useQuery(
-		trpc.transactions.list.queryOptions(),
-	);
+	const {
+		data: remoteTransactions = [],
+		isLoading,
+		error,
+	} = useQuery(trpc.transactions.list.queryOptions());
 	const [cachedTransactions, setCachedTransactions] = useState<Transaction[]>(
 		[],
 	);
-	const transactions = remoteTransactions.length
-		? remoteTransactions
-		: cachedTransactions;
+	const hasCachedTransactions = cachedTransactions.length > 0;
+	const transactions =
+		(isLoading || error) && hasCachedTransactions
+			? cachedTransactions
+			: remoteTransactions;
 	const showSkeleton = isLoading && cachedTransactions.length === 0;
-	const { data: transactionCategories = [] } = useQuery(
-		trpc.transactionCategories.list.queryOptions(),
-	);
+	const { data: remoteTransactionCategories = [], error: categoriesError } =
+		useQuery(trpc.transactionCategories.list.queryOptions());
+	const [cachedTransactionCategories, setCachedTransactionCategories] =
+		useState<TransactionCategory[]>([]);
+	const transactionCategories =
+		categoriesError && cachedTransactionCategories.length
+			? cachedTransactionCategories
+			: remoteTransactionCategories;
 	const t = useTranslations("cashier");
 	const tc = useTranslations("common");
 	const locale = useLocale();
+	const isOnline = useOnlineStatus();
+	const isOfflineMode = !isOnline || !!error;
 
 	useEffect(() => {
 		void readCachedTransactions<Transaction>().then(setCachedTransactions);
 	}, []);
 
 	useEffect(() => {
+		void readCachedTransactionCategories<TransactionCategory>().then(
+			setCachedTransactionCategories,
+		);
+	}, []);
+
+	useEffect(() => {
+		if (isLoading || error) return;
+		setCachedTransactions(remoteTransactions);
 		void replaceCachedTransactions(remoteTransactions);
-		if (remoteTransactions.length || !isLoading) {
-			setCachedTransactions(remoteTransactions);
-		}
-	}, [remoteTransactions, isLoading]);
+	}, [remoteTransactions, error, isLoading]);
+
+	useEffect(() => {
+		if (categoriesError) return;
+		setCachedTransactionCategories(remoteTransactionCategories);
+		void replaceCachedTransactionCategories(remoteTransactionCategories);
+	}, [remoteTransactionCategories, categoriesError]);
 
 	const editTransactionSchema = z.object({
 		description: z.string().min(1, t("descriptionRequired")),
@@ -195,6 +228,101 @@ export default function Cashier() {
 		errorMessage: t("deleteError"),
 	});
 
+	useEffect(() => {
+		if (!isOnline) return;
+		void syncReadyQueue({
+			createTransaction: (payload) =>
+				createMutation.mutateAsync(payload as TransactionCreateInput),
+			updateTransaction: (payload) =>
+				updateMutation.mutateAsync(payload as TransactionUpdateInput),
+			deleteTransaction: (payload) =>
+				deleteMutation.mutateAsync(payload as { id: number }),
+		});
+	}, [createMutation, deleteMutation, isOnline, updateMutation]);
+
+	const buildOptimisticTransaction = (
+		id: number,
+		value: TransactionCreateInput,
+	) =>
+		({
+			id,
+			transaction_number:
+				transactions.find((item) => item.id === id)?.transaction_number ?? null,
+			description: value.description,
+			amount: value.amount,
+			type: value.type,
+			category: value.category ?? null,
+			status: value.status ?? "completed",
+			order_id: null,
+			payment_method_id: null,
+			user_uid:
+				transactions.find((item) => item.id === id)?.user_uid ?? "local",
+			created_at:
+				transactions.find((item) => item.id === id)?.created_at ?? new Date(),
+		}) satisfies Transaction;
+
+	const applyOfflineTransaction = async (
+		operation: "create" | "update" | "delete",
+		payload: TransactionCreateInput | TransactionUpdateInput | { id: number },
+	) => {
+		if (operation === "delete") {
+			const id = (payload as { id: number }).id;
+			await removeCachedTransaction(id);
+			setCachedTransactions((current) =>
+				current.filter((item) => item.id !== id),
+			);
+			await enqueueSyncItem({
+				id: `transaction:delete:${id}`,
+				entity: "transaction",
+				operation: "delete",
+				payload,
+				status: "pending",
+				retryCount: 0,
+			});
+			return;
+		}
+		if (operation === "create") {
+			const localId = -Date.now();
+			const nextTransaction = buildOptimisticTransaction(
+				localId,
+				payload as TransactionCreateInput,
+			);
+			await upsertCachedTransaction(nextTransaction);
+			setCachedTransactions((current) => [nextTransaction, ...current]);
+			await enqueueSyncItem({
+				id: `transaction:create:${localId}`,
+				entity: "transaction",
+				operation: "create",
+				payload: { localId, ...payload },
+				status: "pending",
+				retryCount: 0,
+			});
+			return;
+		}
+		const updatePayload = payload as TransactionUpdateInput;
+		const current = transactions.find((item) => item.id === updatePayload.id);
+		if (!current) return;
+		const nextTransaction = {
+			...current,
+			...updatePayload,
+			category: updatePayload.category ?? current.category,
+		} satisfies Transaction;
+		await upsertCachedTransaction(nextTransaction);
+		setCachedTransactions((currentRows) =>
+			currentRows.map((item) =>
+				item.id === updatePayload.id ? nextTransaction : item,
+			),
+		);
+		await enqueueSyncItem({
+			id: `transaction:update:${updatePayload.id}`,
+			entity: "transaction",
+			operation: "update",
+			payload,
+			status: "pending",
+			retryCount: 0,
+		});
+	};
+
 	const editForm = useForm({
 		defaultValues: {
 			description: "",
@@ -206,16 +334,22 @@ export default function Cashier() {
 		validators: {
 			onSubmit: editTransactionSchema,
 		},
-		onSubmit: ({ value }) => {
+		onSubmit: async ({ value }) => {
 			if (editingId === null) return;
-			updateMutation.mutate({
+			const payload = {
 				id: editingId,
 				description: value.description,
 				category: value.category || undefined,
 				type: value.type,
 				amount: Math.round(value.amount * 100),
 				status: value.status,
-			});
+			};
+			if (isOfflineMode) {
+				await applyOfflineTransaction("update", payload);
+				setIsEditOpen(false);
+				return;
+			}
+			updateMutation.mutate(payload);
 		},
 	});
 
@@ -241,21 +375,38 @@ export default function Cashier() {
 		setIsEditOpen(true);
 	};
 
-	const handleAddTransaction = () => {
+	const handleAddTransaction = async () => {
 		if (!inlineForm.description.trim()) return;
 		if (inlineForm.amount <= 0) return;
-		createMutation.mutate({
+		const payload = {
 			description: inlineForm.description,
 			category: inlineForm.category || undefined,
 			type: inlineForm.type,
 			amount: Math.round(inlineForm.amount * 100),
 			status: inlineForm.status,
-		});
+		};
+		if (isOfflineMode) {
+			await applyOfflineTransaction("create", payload);
+			setInlineForm({
+				description: "",
+				category: "",
+				type: "income",
+				amount: 0,
+				status: "completed",
+			});
+			setIsCreateOpen(false);
+			return;
+		}
+		createMutation.mutate(payload);
 	};
 
-	const handleDelete = () => {
+	const handleDelete = async () => {
 		if (deleteId !== null) {
-			deleteMutation.mutate({ id: deleteId });
+			if (isOfflineMode) {
+				await applyOfflineTransaction("delete", { id: deleteId });
+			} else {
+				deleteMutation.mutate({ id: deleteId });
+			}
 			setIsDeleteOpen(false);
 			setDeleteId(null);
 		}
@@ -431,7 +582,7 @@ export default function Cashier() {
 									<TableCell>
 										<Button
 											size="sm"
-											onClick={handleAddTransaction}
+											onClick={() => void handleAddTransaction()}
 											disabled={createMutation.isPending}
 										>
 											{createMutation.isPending ? (

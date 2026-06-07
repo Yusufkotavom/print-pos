@@ -8,6 +8,7 @@ import {
 	type LocalProductCategory,
 	type LocalServiceOrder,
 	type LocalTransaction,
+	type LocalTransactionCategory,
 	localDb,
 	type SyncQueueItem,
 } from "./db";
@@ -66,6 +67,26 @@ export async function readCachedOrders<T>() {
 	return rows.map((row) => row.payload as T);
 }
 
+export async function readCachedOrder<T>(id: number) {
+	const row = await localDb.orders.get(id);
+	return (row?.payload as T | undefined) ?? null;
+}
+
+export async function upsertCachedOrder(order: unknown) {
+	await localDb.orders.put(toLocalOrder(order));
+}
+
+export async function replaceCachedOrderId(localId: number, order: unknown) {
+	if (localId !== (order as { id: number }).id) {
+		await localDb.orders.delete(localId);
+	}
+	await localDb.orders.put(toLocalOrder(order));
+}
+
+export async function removeCachedOrder(id: number) {
+	await localDb.orders.delete(id);
+}
+
 function toLocalTransaction(transaction: unknown): LocalTransaction {
 	const item = transaction as {
 		id: number;
@@ -103,6 +124,80 @@ export async function replaceCachedTransactions(transactions: unknown[]) {
 export async function readCachedTransactions<T>() {
 	const rows = await localDb.transactions.toArray();
 	return rows.map((row) => row.payload as T);
+}
+
+export async function upsertCachedTransaction(transaction: unknown) {
+	await localDb.transactions.put(toLocalTransaction(transaction));
+}
+
+export async function replaceCachedTransactionId(
+	localId: number,
+	transaction: unknown,
+) {
+	if (localId !== (transaction as { id: number }).id) {
+		await localDb.transactions.delete(localId);
+	}
+	await localDb.transactions.put(toLocalTransaction(transaction));
+}
+
+export async function removeCachedTransaction(id: number) {
+	await localDb.transactions.delete(id);
+}
+
+function toLocalTransactionCategory(
+	category: unknown,
+): LocalTransactionCategory {
+	const item = category as { id: number; name: string; type?: string | null };
+	return {
+		id: item.id,
+		serverId: item.id > 0 ? item.id : 0,
+		name: item.name,
+		type: item.type,
+		updatedAt: new Date().toISOString(),
+		payload: category,
+	};
+}
+
+export async function replaceCachedTransactionCategories(
+	categories: unknown[],
+) {
+	if (categories.length) {
+		await localDb.transactionCategories.clear();
+		await localDb.transactionCategories.bulkPut(
+			categories.map(toLocalTransactionCategory),
+		);
+	} else {
+		const rows = await localDb.transactionCategories
+			.where("serverId")
+			.above(0)
+			.toArray();
+		const idsToDelete = rows.map((row) => row.id);
+		if (idsToDelete.length)
+			await localDb.transactionCategories.bulkDelete(idsToDelete);
+	}
+}
+
+export async function readCachedTransactionCategories<T>() {
+	const rows = await localDb.transactionCategories.toArray();
+	return rows.map((row) => row.payload as T);
+}
+
+export async function upsertCachedTransactionCategory(category: unknown) {
+	await localDb.transactionCategories.put(toLocalTransactionCategory(category));
+}
+
+export async function replaceCachedTransactionCategoryId(
+	localId: number,
+	category: unknown,
+) {
+	if (localId !== (category as { id: number }).id) {
+		await localDb.transactionCategories.delete(localId);
+	}
+	await localDb.transactionCategories.put(toLocalTransactionCategory(category));
+}
+
+export async function removeCachedTransactionCategory(id: number) {
+	await localDb.transactionCategories.delete(id);
 }
 
 function toLocalProduct(product: unknown): LocalProduct {
@@ -498,7 +593,9 @@ export async function mapLocalToServerId(
 		| "product"
 		| "productCategory"
 		| "paymentMethod"
-		| "customer",
+		| "customer"
+		| "transaction"
+		| "transactionCategory",
 	localId: string,
 	serverId: number,
 ) {

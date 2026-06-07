@@ -31,6 +31,11 @@ export function PWAProvider() {
 	const [offlineStatus, setOfflineStatus] =
 		useState<OfflineStatus>("installing");
 	const createOrderMutation = useMutation(trpc.orders.create.mutationOptions());
+	const updateOrderMutation = useMutation(trpc.orders.update.mutationOptions());
+	const receiveOrderPaymentMutation = useMutation(
+		trpc.orders.receivePayment.mutationOptions(),
+	);
+	const deleteOrderMutation = useMutation(trpc.orders.delete.mutationOptions());
 	const createServiceOrderMutation = useMutation(
 		trpc.serviceOrders.create.mutationOptions(),
 	);
@@ -84,6 +89,24 @@ export function PWAProvider() {
 	);
 	const deleteCustomerMutation = useMutation(
 		trpc.customers.delete.mutationOptions(),
+	);
+	const createTransactionMutation = useMutation(
+		trpc.transactions.create.mutationOptions(),
+	);
+	const updateTransactionMutation = useMutation(
+		trpc.transactions.update.mutationOptions(),
+	);
+	const deleteTransactionMutation = useMutation(
+		trpc.transactions.delete.mutationOptions(),
+	);
+	const createTransactionCategoryMutation = useMutation(
+		trpc.transactionCategories.create.mutationOptions(),
+	);
+	const updateTransactionCategoryMutation = useMutation(
+		trpc.transactionCategories.update.mutationOptions(),
+	);
+	const deleteTransactionCategoryMutation = useMutation(
+		trpc.transactionCategories.delete.mutationOptions(),
 	);
 
 	useEffect(() => {
@@ -161,6 +184,12 @@ export function PWAProvider() {
 					createOrderMutation.mutateAsync(payload as never) as Promise<{
 						id?: number;
 					}>,
+				updateOrder: (payload) =>
+					updateOrderMutation.mutateAsync(payload as never),
+				receiveOrderPayment: (payload) =>
+					receiveOrderPaymentMutation.mutateAsync(payload as never),
+				deleteOrder: (payload) =>
+					deleteOrderMutation.mutateAsync(payload as never),
 				createServiceOrder: (payload) =>
 					createServiceOrderMutation.mutateAsync(payload as never) as Promise<{
 						id?: number;
@@ -212,6 +241,22 @@ export function PWAProvider() {
 					updateCustomerMutation.mutateAsync(payload as never),
 				deleteCustomer: (payload) =>
 					deleteCustomerMutation.mutateAsync(payload as never),
+				createTransaction: (payload) =>
+					createTransactionMutation.mutateAsync(payload as never) as Promise<{
+						id?: number;
+					}>,
+				updateTransaction: (payload) =>
+					updateTransactionMutation.mutateAsync(payload as never),
+				deleteTransaction: (payload) =>
+					deleteTransactionMutation.mutateAsync(payload as never),
+				createTransactionCategory: (payload) =>
+					createTransactionCategoryMutation.mutateAsync(
+						payload as never,
+					) as Promise<{ id?: number }>,
+				updateTransactionCategory: (payload) =>
+					updateTransactionCategoryMutation.mutateAsync(payload as never),
+				deleteTransactionCategory: (payload) =>
+					deleteTransactionCategoryMutation.mutateAsync(payload as never),
 			});
 		};
 		const handleMessage = (event: MessageEvent) => {
@@ -226,6 +271,9 @@ export function PWAProvider() {
 		};
 	}, [
 		createOrderMutation,
+		updateOrderMutation,
+		receiveOrderPaymentMutation,
+		deleteOrderMutation,
 		createServiceOrderMutation,
 		updateServiceMutation,
 		updateServiceStatusMutation,
@@ -244,6 +292,12 @@ export function PWAProvider() {
 		createCustomerMutation,
 		updateCustomerMutation,
 		deleteCustomerMutation,
+		createTransactionMutation,
+		updateTransactionMutation,
+		deleteTransactionMutation,
+		createTransactionCategoryMutation,
+		updateTransactionCategoryMutation,
+		deleteTransactionCategoryMutation,
 	]);
 
 	const statusText = useMemo(() => {
@@ -256,10 +310,12 @@ export function PWAProvider() {
 
 	return (
 		<>
-			<div className="fixed bottom-4 left-4 z-50 flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-muted-foreground text-xs shadow-lg">
-				<StatusIcon className="h-4 w-4" />
-				<span>{statusText}</span>
-				<span className={isOnline ? "text-green-600" : "text-amber-600"}>
+			<div className="fixed top-3.5 right-20 z-50 flex items-center gap-1.5 rounded-full border bg-background/50 px-2 py-1 text-[10px] text-muted-foreground shadow-sm backdrop-blur-sm sm:right-40">
+				<StatusIcon className="h-3 w-3" />
+				<span className="hidden sm:inline">{statusText}</span>
+				<span
+					className={`font-medium ${isOnline ? "text-green-600" : "text-amber-600"}`}
+				>
 					{isOnline ? "Online" : "Offline"}
 				</span>
 			</div>

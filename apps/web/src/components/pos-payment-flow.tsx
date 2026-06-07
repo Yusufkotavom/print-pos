@@ -1,8 +1,7 @@
 "use client";
 
-import { toast } from "sonner";
 import { PaymentDialog } from "@/components/payment-dialog";
-import type { PendingPOSOrder, QueuedPOSOrder } from "@/components/pos-types";
+import type { PendingPOSOrder } from "@/components/pos-types";
 
 interface POSPaymentFlowProps {
 	pendingOrder: PendingPOSOrder | null;
@@ -15,10 +14,7 @@ interface POSPaymentFlowProps {
 	paymentMethodLabel: string;
 	submitLabel: string;
 	cancelLabel: string;
-	queuedMessage: string;
 	onOpenChange: (open: boolean) => void;
-	onQueueOrder: (queueItem: QueuedPOSOrder) => Promise<void>;
-	onClearDraft: () => void;
 	onSubmitOrder: (payload: {
 		clientOrderId: string;
 		customerId: number;
@@ -27,7 +23,7 @@ interface POSPaymentFlowProps {
 		paymentMethodId: number;
 		paidAmount: number;
 		total: number;
-	}) => void;
+	}) => Promise<void>;
 }
 
 export function POSPaymentFlow({
@@ -41,10 +37,7 @@ export function POSPaymentFlow({
 	paymentMethodLabel,
 	submitLabel,
 	cancelLabel,
-	queuedMessage,
 	onOpenChange,
-	onQueueOrder,
-	onClearDraft,
 	onSubmitOrder,
 }: POSPaymentFlowProps) {
 	return (
@@ -65,21 +58,7 @@ export function POSPaymentFlow({
 			isPending={isPending}
 			onSubmit={async ({ paymentMethodId, amount }) => {
 				if (!pendingOrder) return;
-				const queuedOrder: QueuedPOSOrder = {
-					...pendingOrder,
-					paymentMethodId,
-					paidAmount: amount,
-					createdAt: new Date().toISOString(),
-					status: "pending",
-				};
-				if (!navigator.onLine) {
-					await onQueueOrder(queuedOrder);
-					onOpenChange(false);
-					onClearDraft();
-					toast.success(queuedMessage);
-					return;
-				}
-				onSubmitOrder({
+				await onSubmitOrder({
 					clientOrderId: pendingOrder.clientOrderId,
 					customerId: pendingOrder.customer.id,
 					products: pendingOrder.items.map((item) => ({

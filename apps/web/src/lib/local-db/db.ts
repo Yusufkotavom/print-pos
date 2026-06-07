@@ -67,6 +67,15 @@ export type LocalTransaction = {
 	payload: unknown;
 };
 
+export type LocalTransactionCategory = {
+	id: number;
+	serverId: number;
+	name: string;
+	type?: string | null;
+	updatedAt: string;
+	payload: unknown;
+};
+
 export type LocalDraft = {
 	key: string;
 	payload: unknown;
@@ -97,7 +106,9 @@ export type SyncQueueItem = {
 		| "customer"
 		| "product"
 		| "productCategory"
-		| "productImage";
+		| "productImage"
+		| "transaction"
+		| "transactionCategory";
 	operation:
 		| "create"
 		| "update"
@@ -122,6 +133,7 @@ class FinOpenPOSLocalDB extends Dexie {
 	serviceOrders!: Table<LocalServiceOrder, number>;
 	orders!: Table<LocalOrder, number>;
 	transactions!: Table<LocalTransaction, number>;
+	transactionCategories!: Table<LocalTransactionCategory, number>;
 	productImages!: Table<LocalProductImage, string>;
 	appMeta!: Table<LocalAppMeta, string>;
 	drafts!: Table<LocalDraft, string>;
@@ -190,6 +202,24 @@ class FinOpenPOSLocalDB extends Dexie {
 				"id, serverId, orderNumber, customerName, status, paymentStatus, updatedAt",
 			transactions:
 				"id, serverId, transactionNumber, description, type, status, updatedAt",
+			productImages: "key, productId, updatedAt",
+			appMeta: "key, updatedAt",
+			drafts: "key, updatedAt",
+			syncQueue:
+				"id, entity, operation, status, nextRetryAt, createdAt, updatedAt",
+		});
+		this.version(7).stores({
+			products: "id, serverId, name, sku, category, updatedAt",
+			customers: "id, serverId, name, phone, updatedAt",
+			paymentMethods: "id, serverId, name, updatedAt",
+			productCategories: "id, serverId, name, updatedAt",
+			serviceOrders:
+				"id, serverId, serviceNumber, customerName, status, updatedAt",
+			orders:
+				"id, serverId, orderNumber, customerName, status, paymentStatus, updatedAt",
+			transactions:
+				"id, serverId, transactionNumber, description, type, status, updatedAt",
+			transactionCategories: "id, serverId, name, type, updatedAt",
 			productImages: "key, productId, updatedAt",
 			appMeta: "key, updatedAt",
 			drafts: "key, updatedAt",

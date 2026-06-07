@@ -9,16 +9,22 @@ import {
 	removeCachedProductImage,
 	removeSyncQueueItem,
 	replaceCachedCustomerId,
+	replaceCachedOrderId,
 	replaceCachedPaymentMethodId,
 	replaceCachedProductCategoryId,
 	replaceCachedProductId,
 	replaceCachedServiceOrderId,
+	replaceCachedTransactionCategoryId,
+	replaceCachedTransactionId,
 	updateSyncQueueItem,
 } from "@/lib/local-db/repo";
 import { uploadProductImage } from "@/lib/product-images";
 
 export type QueuedSyncHandlers = {
 	createOrder?: (payload: unknown) => Promise<{ id?: number } | undefined>;
+	updateOrder?: (payload: unknown) => Promise<unknown>;
+	deleteOrder?: (payload: unknown) => Promise<unknown>;
+	receiveOrderPayment?: (payload: unknown) => Promise<unknown>;
 	createServiceOrder?: (
 		payload: unknown,
 	) => Promise<{ id?: number } | undefined>;
@@ -44,6 +50,16 @@ export type QueuedSyncHandlers = {
 	createCustomer?: (payload: unknown) => Promise<{ id?: number } | undefined>;
 	updateCustomer?: (payload: unknown) => Promise<unknown>;
 	deleteCustomer?: (payload: unknown) => Promise<unknown>;
+	createTransaction?: (
+		payload: unknown,
+	) => Promise<{ id?: number } | undefined>;
+	updateTransaction?: (payload: unknown) => Promise<unknown>;
+	deleteTransaction?: (payload: unknown) => Promise<unknown>;
+	createTransactionCategory?: (
+		payload: unknown,
+	) => Promise<{ id?: number } | undefined>;
+	updateTransactionCategory?: (payload: unknown) => Promise<unknown>;
+	deleteTransactionCategory?: (payload: unknown) => Promise<unknown>;
 	updateProductImage?: (payload: {
 		id: number;
 		image_url: string;
@@ -129,7 +145,10 @@ async function resolveServerId(
 		| "customer"
 		| "serviceOrder"
 		| "productCategory"
-		| "paymentMethod",
+		| "paymentMethod"
+		| "order"
+		| "transaction"
+		| "transactionCategory",
 	id: number,
 ) {
 	if (id > 0) return id;
@@ -150,28 +169,79 @@ function getHandler(item: SyncQueueItem, handlers: QueuedSyncHandlers) {
 	if (item.entity === "order" && item.operation === "create") {
 		if (!handlers.createOrder) return null;
 		return async () => {
-			const response = await handlers.createOrder?.(item.payload);
+			const payload = item.payload as { localId?: number };
+			const response = await handlers.createOrder?.(stripLocalId(payload));
 			const serverId = response && "id" in response ? response.id : undefined;
-			if (serverId) await mapLocalToServerId("order", item.id, serverId);
+			if (serverId && payload.localId != null) {
+				await mapLocalToServerId("order", String(payload.localId), serverId);
+				await replaceCachedOrderId(payload.localId, {
+					...stripLocalId(payload),
+					...response,
+					id: serverId,
+				});
+			} else if (serverId) await mapLocalToServerId("order", item.id, serverId);
+			await removeSyncQueueItem(item.id);
+		};
+	}
+	if (item.entity === "order" && item.operation === "update") {
+		if (!handlers.updateOrder) return null;
+		return async () => {
+			const payload = item.payload as { id: number };
+			const serverId = await resolveServerId("order", payload.id);
+			if (!serverId)
+				throw new Error(`Missing server id for order ${payload.id}`);
+			await handlers.updateOrder?.({ ...payload, id: serverId });
+			await removeSyncQueueItem(item.id);
+		};
+	}
+	if (item.entity === "order" && item.operation === "receivePayment") {
+		if (!handlers.receiveOrderPayment) return null;
+		return async () => {
+			const payload = item.payload as { id: number };
+			const serverId = await resolveServerId("order", payload.id);
+			if (!serverId)
+				throw new Error(`Missing server id for order ${payload.id}`);
+			await handlers.receiveOrderPayment?.({ ...payload, id: serverId });
+			await removeSyncQueueItem(item.id);
+		};
+	}
+	if (item.entity === "order" && item.operation === "delete") {
+		if (!handlers.deleteOrder) return null;
+		return async () => {
+			const payload = item.payload as { id: number };
+			const serverId = await resolveServerId("order", payload.id);
+			if (!serverId)
+				throw new Error(`Missing server id for order ${payload.id}`);
+			await handlers.deleteOrder?.({ id: serverId });
 			await removeSyncQueueItem(item.id);
 		};
 	}
 	if (item.entity === "serviceOrder" && item.operation === "create") {
 		if (!handlers.createServiceOrder) return null;
 		return async () => {
-			const response = await handlers.createServiceOrder?.(item.payload);
+			const payload = item.payload as { localId?: number };
+			const response = await handlers.createServiceOrder?.(
+				stripLocalId(payload),
+			);
 			const serverId = response && "id" in response ? response.id : undefined;
-			if (serverId) {
-				await mapLocalToServerId("serviceOrder", item.id, serverId);
+			if (serverId && payload.localId != null) {
+				await mapLocalToServerId(
+					"serviceOrder",
+					String(payload.localId),
+					serverId,
+				);
+				let nextServiceOrder: unknown = {
+					...stripLocalId(payload),
+					...response,
+					id: serverId,
+				};
 				if (handlers.readServiceOrder) {
 					const serviceOrder = await handlers.readServiceOrder(serverId);
-					if (serviceOrder) {
-						await replaceCachedServiceOrderId(
-							Number.parseInt(item.id, 10),
-							serviceOrder,
-						);
-					}
+					if (serviceOrder) nextServiceOrder = serviceOrder;
 				}
+				await replaceCachedServiceOrderId(payload.localId, nextServiceOrder);
+			} else if (serverId) {
+				await mapLocalToServerId("serviceOrder", item.id, serverId);
 			}
 			await removeSyncQueueItem(item.id);
 		};
@@ -396,6 +466,100 @@ function getHandler(item: SyncQueueItem, handlers: QueuedSyncHandlers) {
 			if (!serverId)
 				throw new Error(`Missing server id for customer ${payload.id}`);
 			await handlers.deleteCustomer?.({ id: serverId });
+			await removeSyncQueueItem(item.id);
+		};
+	}
+	if (item.entity === "transaction" && item.operation === "create") {
+		if (!handlers.createTransaction) return null;
+		return async () => {
+			const payload = item.payload as { localId?: number };
+			const response = await handlers.createTransaction?.(
+				stripLocalId(payload),
+			);
+			const serverId = response && "id" in response ? response.id : undefined;
+			if (serverId && payload.localId != null) {
+				await mapLocalToServerId(
+					"transaction",
+					String(payload.localId),
+					serverId,
+				);
+				await replaceCachedTransactionId(payload.localId, {
+					...stripLocalId(payload),
+					...response,
+					id: serverId,
+				});
+			}
+			await removeSyncQueueItem(item.id);
+		};
+	}
+	if (item.entity === "transaction" && item.operation === "update") {
+		if (!handlers.updateTransaction) return null;
+		return async () => {
+			const payload = item.payload as { id: number };
+			const serverId = await resolveServerId("transaction", payload.id);
+			if (!serverId)
+				throw new Error(`Missing server id for transaction ${payload.id}`);
+			await handlers.updateTransaction?.({ ...payload, id: serverId });
+			await removeSyncQueueItem(item.id);
+		};
+	}
+	if (item.entity === "transaction" && item.operation === "delete") {
+		if (!handlers.deleteTransaction) return null;
+		return async () => {
+			const payload = item.payload as { id: number };
+			const serverId = await resolveServerId("transaction", payload.id);
+			if (!serverId)
+				throw new Error(`Missing server id for transaction ${payload.id}`);
+			await handlers.deleteTransaction?.({ id: serverId });
+			await removeSyncQueueItem(item.id);
+		};
+	}
+	if (item.entity === "transactionCategory" && item.operation === "create") {
+		if (!handlers.createTransactionCategory) return null;
+		return async () => {
+			const payload = item.payload as { localId?: number };
+			const response = await handlers.createTransactionCategory?.(
+				stripLocalId(payload),
+			);
+			const serverId = response && "id" in response ? response.id : undefined;
+			if (serverId && payload.localId != null) {
+				await mapLocalToServerId(
+					"transactionCategory",
+					String(payload.localId),
+					serverId,
+				);
+				await replaceCachedTransactionCategoryId(payload.localId, {
+					...stripLocalId(payload),
+					...response,
+					id: serverId,
+				});
+			}
+			await removeSyncQueueItem(item.id);
+		};
+	}
+	if (item.entity === "transactionCategory" && item.operation === "update") {
+		if (!handlers.updateTransactionCategory) return null;
+		return async () => {
+			const payload = item.payload as { id: number };
+			const serverId = await resolveServerId("transactionCategory", payload.id);
+			if (!serverId)
+				throw new Error(
+					`Missing server id for transaction category ${payload.id}`,
+				);
+			await handlers.updateTransactionCategory?.({ ...payload, id: serverId });
+			await removeSyncQueueItem(item.id);
+		};
+	}
+	if (item.entity === "transactionCategory" && item.operation === "delete") {
+		if (!handlers.deleteTransactionCategory) return null;
+		return async () => {
+			const payload = item.payload as { id: number };
+			const serverId = await resolveServerId("transactionCategory", payload.id);
+			if (!serverId)
+				throw new Error(
+					`Missing server id for transaction category ${payload.id}`,
+				);
+			await handlers.deleteTransactionCategory?.({ id: serverId });
 			await removeSyncQueueItem(item.id);
 		};
 	}

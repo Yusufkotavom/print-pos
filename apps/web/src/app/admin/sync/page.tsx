@@ -36,6 +36,9 @@ type SyncSnapshot = {
 	productCategories: number;
 	productImages: number;
 	serviceOrders: number;
+	orders: number;
+	transactions: number;
+	transactionCategories: number;
 	drafts: number;
 	meta: number;
 };
@@ -48,6 +51,9 @@ const emptySnapshot: SyncSnapshot = {
 	productCategories: 0,
 	productImages: 0,
 	serviceOrders: 0,
+	orders: 0,
+	transactions: 0,
+	transactionCategories: 0,
 	drafts: 0,
 	meta: 0,
 };
@@ -59,6 +65,11 @@ export default function SyncPage() {
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSyncing, setIsSyncing] = useState(false);
 	const createOrderMutation = useMutation(trpc.orders.create.mutationOptions());
+	const updateOrderMutation = useMutation(trpc.orders.update.mutationOptions());
+	const receiveOrderPaymentMutation = useMutation(
+		trpc.orders.receivePayment.mutationOptions(),
+	);
+	const deleteOrderMutation = useMutation(trpc.orders.delete.mutationOptions());
 	const createServiceOrderMutation = useMutation(
 		trpc.serviceOrders.create.mutationOptions(),
 	);
@@ -113,6 +124,24 @@ export default function SyncPage() {
 	const deleteCustomerMutation = useMutation(
 		trpc.customers.delete.mutationOptions(),
 	);
+	const createTransactionMutation = useMutation(
+		trpc.transactions.create.mutationOptions(),
+	);
+	const updateTransactionMutation = useMutation(
+		trpc.transactions.update.mutationOptions(),
+	);
+	const deleteTransactionMutation = useMutation(
+		trpc.transactions.delete.mutationOptions(),
+	);
+	const createTransactionCategoryMutation = useMutation(
+		trpc.transactionCategories.create.mutationOptions(),
+	);
+	const updateTransactionCategoryMutation = useMutation(
+		trpc.transactionCategories.update.mutationOptions(),
+	);
+	const deleteTransactionCategoryMutation = useMutation(
+		trpc.transactionCategories.delete.mutationOptions(),
+	);
 
 	const refresh = useCallback(async () => {
 		setIsLoading(true);
@@ -124,6 +153,9 @@ export default function SyncPage() {
 			productCategories,
 			productImages,
 			serviceOrders,
+			orders,
+			transactions,
+			transactionCategories,
 			drafts,
 			meta,
 		] = await Promise.all([
@@ -134,6 +166,9 @@ export default function SyncPage() {
 			localDb.productCategories.count(),
 			localDb.productImages.count(),
 			localDb.serviceOrders.count(),
+			localDb.orders.count(),
+			localDb.transactions.count(),
+			localDb.transactionCategories.count(),
 			localDb.drafts.count(),
 			localDb.appMeta.count(),
 		]);
@@ -145,6 +180,9 @@ export default function SyncPage() {
 			productCategories,
 			productImages,
 			serviceOrders,
+			orders,
+			transactions,
+			transactionCategories,
 			drafts,
 			meta,
 		});
@@ -220,6 +258,12 @@ export default function SyncPage() {
 				createOrderMutation.mutateAsync(payload as never) as Promise<{
 					id?: number;
 				}>,
+			updateOrder: (payload) =>
+				updateOrderMutation.mutateAsync(payload as never),
+			receiveOrderPayment: (payload) =>
+				receiveOrderPaymentMutation.mutateAsync(payload as never),
+			deleteOrder: (payload) =>
+				deleteOrderMutation.mutateAsync(payload as never),
 			createServiceOrder: (payload) =>
 				createServiceOrderMutation.mutateAsync(payload as never) as Promise<{
 					id?: number;
@@ -266,6 +310,24 @@ export default function SyncPage() {
 				updateCustomerMutation.mutateAsync(payload as never),
 			deleteCustomer: (payload) =>
 				deleteCustomerMutation.mutateAsync(payload as never),
+			createTransaction: (payload) =>
+				createTransactionMutation.mutateAsync(payload as never) as Promise<{
+					id?: number;
+				}>,
+			updateTransaction: (payload) =>
+				updateTransactionMutation.mutateAsync(payload as never),
+			deleteTransaction: (payload) =>
+				deleteTransactionMutation.mutateAsync(payload as never),
+			createTransactionCategory: (payload) =>
+				createTransactionCategoryMutation.mutateAsync(
+					payload as never,
+				) as Promise<{
+					id?: number;
+				}>,
+			updateTransactionCategory: (payload) =>
+				updateTransactionCategoryMutation.mutateAsync(payload as never),
+			deleteTransactionCategory: (payload) =>
+				deleteTransactionCategoryMutation.mutateAsync(payload as never),
 			updateProductImage: async (payload) => {
 				await updateProductMutation.mutateAsync(payload);
 			},
@@ -336,6 +398,12 @@ export default function SyncPage() {
 				/>
 				<MetricCard title="Pending images" value={snapshot.productImages} />
 				<MetricCard title="Cached services" value={snapshot.serviceOrders} />
+				<MetricCard title="Cached orders" value={snapshot.orders} />
+				<MetricCard title="Cached transactions" value={snapshot.transactions} />
+				<MetricCard
+					title="Transaction categories"
+					value={snapshot.transactionCategories}
+				/>
 				<MetricCard title="Drafts" value={snapshot.drafts} />
 				<MetricCard title="Local mappings" value={snapshot.meta} />
 			</div>
