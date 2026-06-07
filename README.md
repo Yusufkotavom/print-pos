@@ -210,11 +210,11 @@ erDiagram
         serial id PK
         varchar name
         text description
-        integer price
-        integer cost
+        bigint price
+        bigint cost
         integer in_stock
         boolean track_stock
-        integer wholesale_price
+        bigint wholesale_price
         integer wholesale_min_qty
         varchar product_type
         varchar user_uid
@@ -226,6 +226,8 @@ erDiagram
         text image_blurhash
         timestamp image_updated_at
         timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
     }
 
     customers {
@@ -237,6 +239,8 @@ erDiagram
         varchar user_uid
         varchar status
         timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
     }
 
     payment_methods {
@@ -244,6 +248,8 @@ erDiagram
         varchar name
         varchar user_uid
         timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
     }
 
     orders {
@@ -251,13 +257,15 @@ erDiagram
         varchar order_number
         varchar client_order_id UK
         integer customer_id FK
-        integer total_amount
+        bigint total_amount
         text note
         varchar user_uid
         varchar status
-        integer paid_amount
+        bigint paid_amount
         varchar payment_status
         timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
     }
 
     order_items {
@@ -267,8 +275,8 @@ erDiagram
         varchar item_name
         varchar item_type
         integer quantity
-        integer price
-        integer cost
+        bigint price
+        bigint cost
         text note
         timestamp created_at
     }
@@ -280,12 +288,14 @@ erDiagram
         integer order_id FK
         integer service_order_id FK
         integer payment_method_id FK
-        integer amount
+        bigint amount
         varchar user_uid
         varchar type
         varchar category
         varchar status
         timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
     }
 
     customers |o--o{ orders : "has"

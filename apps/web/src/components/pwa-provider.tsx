@@ -27,6 +27,7 @@ export function PWAProvider() {
 	const [deferredPrompt, setDeferredPrompt] =
 		useState<BeforeInstallPromptEvent | null>(null);
 	const [dismissed, setDismissed] = useState(false);
+	const [isMounted, setIsMounted] = useState(false);
 	const [isOnline, setIsOnline] = useState(true);
 	const [offlineStatus, setOfflineStatus] =
 		useState<OfflineStatus>("installing");
@@ -110,6 +111,7 @@ export function PWAProvider() {
 	);
 
 	useEffect(() => {
+		setIsMounted(true);
 		setDismissed(
 			localStorage.getItem("finopenpos:pwa-install-dismissed") === "1",
 		);
@@ -307,6 +309,8 @@ export function PWAProvider() {
 	}, [offlineStatus]);
 	const StatusIcon =
 		offlineStatus === "ready" ? CheckCircle2Icon : CloudOffIcon;
+
+	if (!isMounted) return null;
 
 	return (
 		<>
