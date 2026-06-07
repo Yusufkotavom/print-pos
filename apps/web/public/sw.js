@@ -1,4 +1,4 @@
-const CACHE_NAME = "finopenpos-v4";
+const CACHE_NAME = "finopenpos-v5";
 const APP_SHELL = [
 	"/",
 	"/admin",
@@ -17,7 +17,7 @@ const OFFLINE_FALLBACK = "/offline";
 const SYNC_TAG = "finopenpos-sync-queue";
 const SYNC_MESSAGE = "FINOPENPOS_SYNC_QUEUE";
 const DB_NAME = "finopenpos-local";
-const DB_VERSION = 5;
+const DB_VERSION = 7;
 
 self.addEventListener("install", (event) => {
 	event.waitUntil(precacheAppShell());

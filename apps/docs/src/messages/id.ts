@@ -26,9 +26,9 @@ const messages = {
 	techStack: {
 		title: "Dibangun dengan <accent>alat terbaik</accent> untuk pekerjaan ini",
 		pglite: {
-			name: "PGLite",
+			name: "PostgreSQL + Dexie",
 			description:
-				"PostgreSQL embedded via WASM. Tanpa server database untuk diinstal. Clone, jalankan, kembangkan.",
+				"PostgreSQL untuk source of truth, Dexie untuk cache browser dan antrean sinkronisasi. Clone, jalankan, kembangkan.",
 		},
 		nextjs: {
 			name: "Next.js 16",
@@ -61,7 +61,7 @@ const messages = {
 		pos: {
 			name: "Point of Sale",
 			description:
-				"Checkout cepat dan intuitif. Bisa offline dengan PGLite. Mendukung banyak metode pembayaran.",
+				"Checkout cepat dan intuitif. Bisa offline dengan cache lokal dan antrean sinkronisasi. Mendukung banyak metode pembayaran.",
 		},
 		fiscal: {
 			name: "Integrasi Fiskal",
@@ -76,7 +76,7 @@ const messages = {
 		offline: {
 			name: "Database Zero-Setup",
 			description:
-				"Didukung PGLite — PostgreSQL embedded via WASM. Tanpa server database untuk diinstal atau dikonfigurasi. Jalankan dan pakai.",
+				"Didukung PostgreSQL, Dexie, dan cache PWA. Alur local-first tanpa menghilangkan server sebagai sumber utama.",
 		},
 		dashboard: {
 			name: "Dasbor Analitik",

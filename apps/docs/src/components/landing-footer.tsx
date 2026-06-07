@@ -16,7 +16,7 @@ export default function Footer({
 			<div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 sm:flex-row">
 				<p className="text-[#4E5159] text-[13px]">
 					{t("builtWith")}{" "}
-					<span className="text-[#64676F]">Next.js, PGLite, Drizzle</span>{" "}
+					<span className="text-[#64676F]">Next.js, PostgreSQL, Drizzle</span>{" "}
 					{t("by")}
 				</p>
 				<div className="flex gap-6">

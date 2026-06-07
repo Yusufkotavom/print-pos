@@ -41,7 +41,7 @@ export default function Hero({
 				<span className="text-[#94979E]">=</span>{" "}
 				<span className="text-[#34D59A]">drizzle</span>
 				<span className="text-[#94979E]">(</span>
-				<span className="text-[#F7B983]">pglite</span>
+				<span className="text-[#F7B983]">postgres</span>
 				<span className="text-[#94979E]">);</span>
 			</div>
 

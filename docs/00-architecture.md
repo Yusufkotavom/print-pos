@@ -40,7 +40,7 @@ The project uses a Turborepo monorepo. The pure fiscal logic lives in a standalo
 ├─────────────────────────────────────────────────────────────┤
 │  Persistence (apps/web/src/lib/)                             │
 │  fiscal-settings-repository.ts, invoice-repository.ts       │
-│  Drizzle ORM + PGLite (apps/web/src/lib/db/schema.ts)       │
+│  Drizzle ORM + PostgreSQL (apps/web/src/lib/db/schema.ts)   │
 └─────────────────────────────────────────────────────────────┘
 ```
 

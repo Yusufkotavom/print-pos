@@ -1,6 +1,6 @@
 # FinOpenPOS
 
-Open-source Point of Sale (POS) and inventory management system for small retail and service businesses. Built with Next.js 16, React 19, Drizzle ORM and embedded PostgreSQL via PGLite. Zero external dependencies to run — `bun install && bun run dev` and you're set.
+Open-source Point of Sale (POS) and inventory management system for small retail and service businesses. Built with Next.js 16, React 19, Drizzle ORM, PostgreSQL, Dexie, and PWA offline cache. Run locally with `bun install && bun run dev`.
 
 
 ## Table of Contents
@@ -18,8 +18,8 @@ Open-source Point of Sale (POS) and inventory management system for small retail
 - [Docker Deploy](#docker-deploy)
 - [Database](#database)
   - [Schema](#schema)
-  - [PGLite (default)](#pglite-default)
-  - [Migrating to PostgreSQL](#migrating-to-postgresql)
+- [PostgreSQL](#postgresql)
+- [Local-first browser cache](#local-first-browser-cache)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -51,16 +51,16 @@ flowchart LR
   tRPC["tRPC v11 (superjson)"]
   Auth["Better Auth (session cookie)"]
   Drizzle["Drizzle ORM"]
-  PGLite["PGLite (PostgreSQL WASM)"]
+  PostgreSQL["PostgreSQL"]
   Scalar["Scalar /api/docs"]
 
   Browser -->|HTTP request| Proxy
   Proxy -->|authenticated| tRPC
   Proxy -->|/api/auth/*| Auth
   tRPC -->|protectedProcedure| Drizzle
-  Drizzle -->|SQL| PGLite
+  Drizzle -->|SQL| PostgreSQL
   tRPC -.->|OpenAPI spec| Scalar
-  Auth -->|session| PGLite
+  Auth -->|session| PostgreSQL
 ```
 
 ## Tech Stack
@@ -69,7 +69,7 @@ flowchart LR
 |-------|------------|
 | Framework | Next.js 16 (App Router) |
 | UI | React 19, Tailwind CSS 4, Radix UI, Recharts |
-| Database | PGLite (PostgreSQL via WASM) |
+| Database | PostgreSQL server + Dexie browser cache |
 | ORM | Drizzle ORM |
 | API | tRPC v11 (end-to-end type safety) |
 | Auth | Better Auth |
@@ -101,7 +101,7 @@ bun run dev
 
 Open http://localhost:3001 and use the **Fill demo credentials** button to sign in with the test account (`test@example.com` / `test1234`).
 
-> The first `bun run dev` automatically creates the database at `apps/web/data/pglite`, pushes the schema via Drizzle and runs the seed with demo data (customers, products, orders, payment methods, transactions) plus ~5570 IBGE cities. Category tables such as `product_categories` and `transaction_categories` start empty and are managed from the UI.
+> The first `bun run dev:web` starts PostgreSQL from `compose.yaml`, pushes the schema via Drizzle and runs the web app. Seed/demo data depends on available setup scripts. Category tables such as `product_categories` and `transaction_categories` start empty and are managed from the UI.
 
 ## Scripts
 
@@ -111,7 +111,7 @@ Open http://localhost:3001 and use the **Fill demo credentials** button to sign 
 | `bun run dev:web` | Start only the web app |
 | `bun run check` | Lint and format with Biome |
 | `cd apps/web && bun test` | Run tRPC router tests |
-| `cd apps/web && bun run prepare-prod` | Migrate from PGLite to real PostgreSQL |
+| `bun run db:push` | Push Drizzle schema to PostgreSQL |
 
 ## Project Structure
 
@@ -123,12 +123,11 @@ FinOpenPOS/
 │       │   ├── app/            # Pages (admin, login, signup, API routes)
 │       │   ├── components/     # UI components (shadcn + custom)
 │       │   ├── lib/
-│       │   │   ├── db/         # Drizzle schema + PGLite singleton
+│       │   │   ├── db/         # Drizzle PostgreSQL connection + schema
 │       │   │   └── trpc/       # tRPC routers (business APIs)
 │       │   ├── messages/       # i18n (en.ts, id.ts)
 │       │   └── proxy.ts        # Next.js 16 middleware
 │       ├── scripts/            # DB ensure, ER gen, prepare-prod
-│       └── data/               # PGLite database (gitignored)
 ├── packages/
 │   ├── api/                    # Shared API package
 │   ├── auth/                   # Better Auth integration
@@ -136,7 +135,7 @@ FinOpenPOS/
 │   └── ui/                     # Shared UI components
 ├── turbo.json                  # Turborepo task config
 ├── biome.json                  # Linter/formatter config
-├── Dockerfile                  # Dev (PGLite) Docker image
+├── Dockerfile                  # Dev Docker image
 ├── Dockerfile.production       # Production (PostgreSQL) Docker image
 └── docs/                       # Product, database and roadmap documentation
 ```
@@ -175,7 +174,7 @@ cd apps/web && bun test
 bun run check-types
 ```
 
-The tRPC router tests use PGLite in-memory databases with mocked DB bindings to verify CRUD, cross-user isolation, validation errors and payment/order flows.
+The tRPC router tests use mocked PostgreSQL-compatible DB bindings to verify CRUD, cross-user isolation, validation errors and payment/order flows.
 
 ## Docker Deploy
 
@@ -301,88 +300,27 @@ erDiagram
 
 All monetary values are stored as **integer cents** (e.g., $49.99 = `4999`). This avoids floating-point precision issues. All tables with `user_uid` enforce multi-tenancy.
 
-### PGLite (default)
+### PostgreSQL
 
-PGLite runs full PostgreSQL via WASM, directly in the Node.js process. Data is stored at `apps/web/data/pglite` (filesystem). No external PostgreSQL server required.
+The app uses PostgreSQL through Drizzle ORM. Local development starts PostgreSQL through `compose.yaml`; production can provide any PostgreSQL-compatible `DATABASE_URL`.
 
-**Pros:** zero config, no dependencies, ideal for dev and small projects.
-
-**Limitations:** single-process (no external concurrent connections), lower performance than native PostgreSQL under heavy load, no replication.
-
-### Migrating to PostgreSQL
-
-When the project grows and needs a real database, migration is straightforward because Drizzle ORM abstracts the data access layer — the schema is identical.
-
-#### Automatic migration
-
-Run the built-in script that handles all steps automatically:
+Default local URL:
 
 ```bash
-cd apps/web && bun run prepare-prod
+DATABASE_URL=postgresql://finopenpos:finopenpos@localhost:15432/finopenpos
 ```
 
-Then set `DATABASE_URL` in your `apps/web/.env` file and run:
+Push schema:
 
 ```bash
-cd apps/web && bun run db:push
-cd apps/web && bun run dev
+bun run db:push
 ```
 
-#### Manual migration
+### Local-first browser cache
 
-If you prefer to do it step by step:
+Dexie stores browser-side products, customers, payment methods, draft POS/service data, product images, and sync queue items. The service worker caches app shell routes and asks open windows to flush pending sync work when background sync fires.
 
-#### 1. Install the PostgreSQL driver
-
-```bash
-bun add pg
-bun remove @electric-sql/pglite
-```
-
-#### 2. Update `apps/web/src/lib/db/index.ts`
-
-```ts
-import { drizzle } from "drizzle-orm/node-postgres";
-import * as schema from "./schema";
-
-export const db = drizzle(process.env.DATABASE_URL!, { schema });
-```
-
-#### 3. Update `apps/web/drizzle.config.ts`
-
-```ts
-import { defineConfig } from "drizzle-kit";
-
-export default defineConfig({
-  dialect: "postgresql",
-  schema: "./src/lib/db/schema.ts",
-  dbCredentials: {
-    url: process.env.DATABASE_URL!,
-  },
-});
-```
-
-#### 4. Add the env variable to `apps/web/.env`
-
-```
-DATABASE_URL=postgresql://user:password@host:5432/finopenpos
-```
-
-#### 5. Push schema and run
-
-```bash
-cd apps/web && bun run db:push
-bun run dev
-```
-
-#### 6. Clean up what's no longer needed
-
-- Delete `scripts/ensure-db.ts` (only exists for PGLite recovery)
-- Remove `db:ensure` from `dev` and `build` scripts in `package.json`
-- Remove `serverExternalPackages` from `next.config.mjs`
-- In Docker, replace the PGLite volume with a PostgreSQL connection via `DATABASE_URL`
-
-> The Drizzle schema (`apps/web/src/lib/db/schema.ts`) doesn't change. All queries, relations and tRPC procedures keep working without modification.
+Core transactional tables include `created_at`, `updated_at`, and `deleted_at` fields so future sync can compare versions and prefer soft-delete flows over destructive deletes.
 
 ## Contributing
 

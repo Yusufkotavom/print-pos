@@ -26,9 +26,9 @@ const messages = {
 	techStack: {
 		title: "Built with the <accent>best tools</accent> for the job",
 		pglite: {
-			name: "PGLite",
+			name: "PostgreSQL + Dexie",
 			description:
-				"Embedded PostgreSQL via WASM. No database server to install. Clone, run, develop.",
+				"PostgreSQL for source of truth, Dexie for browser cache and sync queue. Clone, run, develop.",
 		},
 		nextjs: {
 			name: "Next.js 16",
@@ -61,7 +61,7 @@ const messages = {
 		pos: {
 			name: "Point of Sale",
 			description:
-				"Fast, intuitive checkout. Works offline with PGLite. Supports multiple payment methods.",
+				"Fast, intuitive checkout. Works offline with local cache and sync queue. Supports multiple payment methods.",
 		},
 		fiscal: {
 			name: "Fiscal Integration",
@@ -76,7 +76,7 @@ const messages = {
 		offline: {
 			name: "Zero-Setup Database",
 			description:
-				"Powered by PGLite — embedded PostgreSQL via WASM. No database server to install or configure. Just run and go.",
+				"Powered by PostgreSQL, Dexie, and PWA cache. Local-first flow without hiding server truth.",
 		},
 		dashboard: {
 			name: "Analytics Dashboard",

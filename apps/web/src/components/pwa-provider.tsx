@@ -20,7 +20,7 @@ type BeforeInstallPromptEvent = Event & {
 
 type OfflineStatus = "unsupported" | "installing" | "ready";
 
-const PWA_CACHE_NAME = "finopenpos-v4";
+const PWA_CACHE_NAME = "finopenpos-v5";
 
 export function PWAProvider() {
 	const trpc = useTRPC();

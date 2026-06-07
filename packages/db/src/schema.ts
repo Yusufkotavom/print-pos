@@ -90,14 +90,24 @@ export const products = pgTable("products", {
 	image_height: integer("image_height"),
 	image_blurhash: text("image_blurhash"),
 	image_updated_at: timestamp("image_updated_at"),
-	created_at: timestamp("created_at").defaultNow(),
+	created_at: timestamp("created_at").defaultNow().notNull(),
+	updated_at: timestamp("updated_at")
+		.defaultNow()
+		.$onUpdate(() => new Date())
+		.notNull(),
+	deleted_at: timestamp("deleted_at"),
 });
 
 export const productCategories = pgTable("product_categories", {
 	id: serial("id").primaryKey(),
 	name: varchar("name", { length: 100 }).notNull(),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
-	created_at: timestamp("created_at").defaultNow(),
+	created_at: timestamp("created_at").defaultNow().notNull(),
+	updated_at: timestamp("updated_at")
+		.defaultNow()
+		.$onUpdate(() => new Date())
+		.notNull(),
+	deleted_at: timestamp("deleted_at"),
 });
 
 export const serviceTypes = pgTable("service_types", {
@@ -105,7 +115,12 @@ export const serviceTypes = pgTable("service_types", {
 	name: varchar("name", { length: 100 }).notNull(),
 	value: varchar("value", { length: 100 }).notNull(),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
-	created_at: timestamp("created_at").defaultNow(),
+	created_at: timestamp("created_at").defaultNow().notNull(),
+	updated_at: timestamp("updated_at")
+		.defaultNow()
+		.$onUpdate(() => new Date())
+		.notNull(),
+	deleted_at: timestamp("deleted_at"),
 });
 
 export const customers = pgTable("customers", {
@@ -116,7 +131,12 @@ export const customers = pgTable("customers", {
 	address: text("address"),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
 	status: varchar("status", { length: 20 }),
-	created_at: timestamp("created_at").defaultNow(),
+	created_at: timestamp("created_at").defaultNow().notNull(),
+	updated_at: timestamp("updated_at")
+		.defaultNow()
+		.$onUpdate(() => new Date())
+		.notNull(),
+	deleted_at: timestamp("deleted_at"),
 });
 
 export const orders = pgTable("orders", {
@@ -132,7 +152,12 @@ export const orders = pgTable("orders", {
 	payment_status: varchar("payment_status", { length: 20 })
 		.default("unpaid")
 		.notNull(),
-	created_at: timestamp("created_at").defaultNow(),
+	created_at: timestamp("created_at").defaultNow().notNull(),
+	updated_at: timestamp("updated_at")
+		.defaultNow()
+		.$onUpdate(() => new Date())
+		.notNull(),
+	deleted_at: timestamp("deleted_at"),
 });
 
 export const orderItems = pgTable("order_items", {
@@ -171,7 +196,12 @@ export const serviceOrders = pgTable("service_orders", {
 		.default("unpaid")
 		.notNull(),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
-	created_at: timestamp("created_at").defaultNow(),
+	created_at: timestamp("created_at").defaultNow().notNull(),
+	updated_at: timestamp("updated_at")
+		.defaultNow()
+		.$onUpdate(() => new Date())
+		.notNull(),
+	deleted_at: timestamp("deleted_at"),
 	warranty_unit: varchar("warranty_unit", { length: 20 })
 		.notNull()
 		.default("none"),
@@ -205,14 +235,24 @@ export const transactionCategories = pgTable("transaction_categories", {
 	name: varchar("name", { length: 100 }).notNull(),
 	type: varchar("type", { length: 20 }).notNull(),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
-	created_at: timestamp("created_at").defaultNow(),
+	created_at: timestamp("created_at").defaultNow().notNull(),
+	updated_at: timestamp("updated_at")
+		.defaultNow()
+		.$onUpdate(() => new Date())
+		.notNull(),
+	deleted_at: timestamp("deleted_at"),
 });
 
 export const paymentMethods = pgTable("payment_methods", {
 	id: serial("id").primaryKey(),
 	name: varchar("name", { length: 50 }).notNull(),
 	user_uid: varchar("user_uid", { length: 255 }).notNull().default(""),
-	created_at: timestamp("created_at").defaultNow(),
+	created_at: timestamp("created_at").defaultNow().notNull(),
+	updated_at: timestamp("updated_at")
+		.defaultNow()
+		.$onUpdate(() => new Date())
+		.notNull(),
+	deleted_at: timestamp("deleted_at"),
 });
 
 export const payments = pgTable("payments", {
@@ -231,7 +271,12 @@ export const payments = pgTable("payments", {
 	notes: text("notes"),
 	paid_at: timestamp("paid_at").defaultNow(),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
-	created_at: timestamp("created_at").defaultNow(),
+	created_at: timestamp("created_at").defaultNow().notNull(),
+	updated_at: timestamp("updated_at")
+		.defaultNow()
+		.$onUpdate(() => new Date())
+		.notNull(),
+	deleted_at: timestamp("deleted_at"),
 });
 
 export const transactions = pgTable("transactions", {
@@ -250,7 +295,12 @@ export const transactions = pgTable("transactions", {
 	type: varchar("type", { length: 20 }),
 	category: varchar("category", { length: 100 }),
 	status: varchar("status", { length: 20 }),
-	created_at: timestamp("created_at").defaultNow(),
+	created_at: timestamp("created_at").defaultNow().notNull(),
+	updated_at: timestamp("updated_at")
+		.defaultNow()
+		.$onUpdate(() => new Date())
+		.notNull(),
+	deleted_at: timestamp("deleted_at"),
 });
 
 export const cities = pgTable("cities", {
