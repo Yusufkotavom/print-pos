@@ -43,6 +43,8 @@ type ParsedProductRow = {
 	category?: string;
 	product_type?: "product" | "service";
 	description?: string;
+	wholesale_price?: number;
+	wholesale_min_qty?: number;
 };
 type ProductRow = RouterOutputs["products"]["list"][number];
 
@@ -142,6 +144,8 @@ export default function ImportProductsPage() {
 							track_stock: trackStock,
 							product_type: productType === "service" ? "service" : "product",
 							category: getVal(["category", "kategori"]) || "",
+							wholesale_price: Number.parseInt(getVal(["wholesale_price", "harga_grosir", "harga grosir"]) || "0", 10) || undefined,
+							wholesale_min_qty: Number.parseInt(getVal(["wholesale_min_qty", "min_grosir", "minimal grosir"]) || "0", 10) || undefined,
 						};
 					})
 					.filter((item) => item.name);

@@ -113,6 +113,8 @@ export const productsRouter = router({
 					product_type: productTypeSchema.default("product"),
 					category: z.string().optional(),
 					icon: z.string().optional(),
+					wholesale_price: z.number().int().optional().nullable(),
+					wholesale_min_qty: z.number().int().optional().nullable(),
 				}),
 			),
 		)
@@ -169,6 +171,8 @@ export const productsRouter = router({
 								product_type: item.product_type,
 								category: item.category,
 								icon: item.icon,
+								wholesale_price: item.wholesale_price,
+								wholesale_min_qty: item.wholesale_min_qty,
 							})
 							.where(
 								and(
@@ -187,6 +191,8 @@ export const productsRouter = router({
 							product_type: item.product_type,
 							category: item.category,
 							icon: item.icon,
+							wholesale_price: item.wholesale_price,
+							wholesale_min_qty: item.wholesale_min_qty,
 							user_uid: ctx.user.id,
 						});
 					}
