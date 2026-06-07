@@ -13,8 +13,8 @@ import { type Locale, locales } from "@/i18n/config";
 import { setLocale } from "@/i18n/locale";
 
 const localeNames: Record<Locale, string> = {
-	en: "English",
-	id: "Indonesia",
+	en: "EN",
+	id: "ID",
 };
 
 export function LocaleSwitcher() {
@@ -28,7 +28,7 @@ export function LocaleSwitcher() {
 
 	return (
 		<Select value={locale} onValueChange={onChange}>
-			<SelectTrigger className="h-8 w-[130px] text-xs">
+			<SelectTrigger className="h-8 w-[65px] font-medium text-xs">
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>
