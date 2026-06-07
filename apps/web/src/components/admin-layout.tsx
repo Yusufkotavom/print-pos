@@ -180,7 +180,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
 		if (item.children?.length) {
 			return (
-				<div key={item.href} className="space-y-1">
+				<div
+					key={`${item.href}-${item.labelKey}-group-${level}`}
+					className="space-y-1"
+				>
 					<button
 						type="button"
 						onClick={() => toggleGroup(item.href)}
@@ -207,7 +210,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
 		return (
 			<Link
-				key={item.href}
+				key={`${item.href}-${item.labelKey}-${level}`}
 				href={item.href}
 				onClick={() => setMobileMenuOpen(false)}
 				className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
@@ -230,7 +233,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
 		if (item.children?.length) {
 			return (
-				<div key={item.href} className="space-y-1">
+				<div key={`${item.href}-${item.labelKey}-group`} className="space-y-1">
 					<button
 						type="button"
 						onClick={() => toggleGroup(item.href)}
@@ -257,7 +260,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
 		return (
 			<Link
-				key={item.href}
+				key={`${item.href}-${item.labelKey}`}
 				href={item.href}
 				className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
 					pathname === item.href
