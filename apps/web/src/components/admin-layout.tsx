@@ -22,6 +22,7 @@ import {
 	Package2Icon,
 	PackageIcon,
 	SettingsIcon,
+	ShieldIcon,
 	ShoppingBagIcon,
 	ShoppingCartIcon,
 	UsersIcon,
@@ -54,9 +55,12 @@ interface NavItem {
 		| "balanceSheet"
 		| "paymentMethods"
 		| "pos"
-		| "companySettings";
+		| "companySettings"
+		| "platformUsers"
+		| "platformSubscriptions";
 	icon: LucideIcon;
 	children?: NavItem[];
+	platformAdminOnly?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -139,6 +143,18 @@ const navItems: NavItem[] = [
 		labelKey: "companySettings",
 		icon: SettingsIcon,
 	},
+	{
+		href: "/admin/users",
+		labelKey: "platformUsers",
+		icon: ShieldIcon,
+		platformAdminOnly: true,
+	},
+	{
+		href: "/admin/subscriptions",
+		labelKey: "platformSubscriptions",
+		icon: CreditCardIcon,
+		platformAdminOnly: true,
+	},
 ];
 
 function flattenNavItems(items: NavItem[]): NavItem[] {
@@ -155,7 +171,13 @@ function isNavItemActive(pathname: string, item: NavItem): boolean {
 	);
 }
 
-export function AdminLayout({ children }: { children: React.ReactNode }) {
+export function AdminLayout({
+	children,
+	isPlatformAdmin,
+}: {
+	children: React.ReactNode;
+	isPlatformAdmin: boolean;
+}) {
 	const pathname = usePathname();
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 	const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
@@ -165,9 +187,15 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 		"/admin/reports/financial": true,
 	});
 	const t = useTranslations("nav");
+	const visibleNavItems = navItems.filter(
+		(item) => !item.platformAdminOnly || isPlatformAdmin,
+	);
 
 	const pageNames: Record<string, string> = Object.fromEntries(
-		flattenNavItems(navItems).map((item) => [item.href, t(item.labelKey)]),
+		flattenNavItems(visibleNavItems).map((item) => [
+			item.href,
+			t(item.labelKey),
+		]),
 	);
 
 	const toggleGroup = (href: string) =>
@@ -354,7 +382,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 								<XIcon className="h-5 w-5" />
 							</Button>
 						</div>
-						{navItems.map((item) => renderMobileItem(item))}
+						{visibleNavItems.map((item) => renderMobileItem(item))}
 					</nav>
 				</div>
 			)}
@@ -363,7 +391,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 				<aside className="fixed inset-y-0 left-0 z-10 mt-[56px] hidden w-60 flex-col border-r bg-background sm:flex">
 					<nav className="flex flex-col gap-2 px-3 py-5">
 						<TooltipProvider>
-							{navItems.map((item) => renderDesktopItem(item))}
+							{visibleNavItems.map((item) => renderDesktopItem(item))}
 						</TooltipProvider>
 					</nav>
 				</aside>

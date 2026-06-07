@@ -35,13 +35,23 @@ import {
 } from "@finopenpos/ui/components/table";
 import { Textarea } from "@finopenpos/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftIcon, FileTextIcon } from "lucide-react";
+import {
+	ArrowLeftIcon,
+	FileTextIcon,
+	MessageCircleIcon,
+	PencilIcon,
+	Trash2Icon,
+} from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { use, useState } from "react";
+import { use, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { PaymentDialog } from "@/components/payment-dialog";
+import { POSCartPanel } from "@/components/pos-cart-panel";
+import { POSProductCatalog } from "@/components/pos-product-catalog";
+import type { POSProductItem } from "@/components/pos-types";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
 
@@ -52,6 +62,16 @@ const statuses = [
 	"done",
 	"warranty",
 ] as const;
+
+function toWhatsappUrl(phone: string | null | undefined, message: string) {
+	if (!phone) return null;
+	const cleanPhone = phone.replace(/[^0-9]/g, "");
+	const waPhone = cleanPhone.startsWith("0")
+		? `62${cleanPhone.slice(1)}`
+		: cleanPhone;
+	if (!waPhone) return null;
+	return `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
+}
 
 export default function ServiceDetailPage({
 	params,
@@ -78,11 +98,17 @@ export default function ServiceDetailPage({
 	const [editEstimatedDoneAt, setEditEstimatedDoneAt] = useState("");
 	const [editCustomerNote, setEditCustomerNote] = useState("");
 	const [editInternalNote, setEditInternalNote] = useState("");
+	const [editDetailText, setEditDetailText] = useState("");
+	const [editItems, setEditItems] = useState<POSProductItem[]>([]);
+	const [productSearch, setProductSearch] = useState("");
+	const [selectedCategory, setSelectedCategory] = useState("all");
+	const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 	const [warrantyUnit, setWarrantyUnit] = useState<
 		"none" | "day" | "month" | "year"
 	>("none");
 	const [warrantyValue, setWarrantyValue] = useState("");
 	const [warrantyNotes, setWarrantyNotes] = useState("");
+	const search = useDebouncedValue(productSearch, 250);
 	const { data: service, isLoading } = useQuery(
 		trpc.serviceOrders.get.queryOptions({ id: serviceId }),
 	);
@@ -95,6 +121,7 @@ export default function ServiceDetailPage({
 	const { data: companySettings } = useQuery(
 		trpc.companySettings.get.queryOptions(),
 	);
+	const { data: products = [] } = useQuery(trpc.products.list.queryOptions());
 
 	const updateService = useMutation(
 		trpc.serviceOrders.update.mutationOptions({
@@ -103,6 +130,7 @@ export default function ServiceDetailPage({
 					trpc.serviceOrders.get.queryOptions({ id: serviceId }),
 				);
 				queryClient.invalidateQueries(trpc.serviceOrders.list.queryOptions());
+				queryClient.invalidateQueries(trpc.products.list.queryOptions());
 				setEditOpen(false);
 				toast.success("Service diperbarui");
 			},
@@ -157,6 +185,29 @@ export default function ServiceDetailPage({
 		}),
 	);
 
+	const productCategories = useMemo(() => {
+		const names = products
+			.map((product) => product.category)
+			.filter((category): category is string => Boolean(category));
+		return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+	}, [products]);
+	const filteredProducts = useMemo(() => {
+		const q = search.toLowerCase().trim();
+		return products.filter((product) => {
+			const matchesCategory =
+				selectedCategory === "all" || product.category === selectedCategory;
+			const matchesSearch =
+				!q ||
+				product.name.toLowerCase().includes(q) ||
+				(product.category ?? "").toLowerCase().includes(q);
+			return matchesCategory && matchesSearch;
+		});
+	}, [products, search, selectedCategory]);
+	const editTotal = editItems.reduce(
+		(sum, item) => sum + item.price * item.quantity,
+		0,
+	);
+
 	if (isLoading) return <Skeleton className="h-96 w-full" />;
 	if (!service)
 		return <div className="text-muted-foreground">{t("serviceNotFound")}</div>;
@@ -190,6 +241,30 @@ export default function ServiceDetailPage({
 			.replace(/{customer_name}/g, service.customer?.name ?? "")
 			.replace(/{status}/g, t(`status_${status}` as never))
 			.replace(/{product_information}/g, productInformationText);
+	const openWhatsappForStatus = (status: (typeof statuses)[number]) => {
+		const url = toWhatsappUrl(
+			service.customer?.phone || companySettings?.whatsapp,
+			buildWhatsappMessage(status),
+		);
+		if (url) window.open(url, "_blank");
+	};
+	const serviceSummaryMessage = [
+		`${service.service_number ?? `#${service.id}`}`,
+		service.customer?.name
+			? `${t("customer")}: ${service.customer.name}`
+			: null,
+		...service.items.map(
+			(item) =>
+				`- ${item.item_name} x${item.quantity} (${formatCurrency(item.price * item.quantity, locale)})`,
+		),
+		`${tc("total")}: ${formatCurrency(service.total_amount, locale)}`,
+	]
+		.filter(Boolean)
+		.join("\n");
+	const serviceWhatsappUrl = toWhatsappUrl(
+		service.customer?.phone,
+		serviceSummaryMessage,
+	);
 	const warrantyUntil = service.warranty_until
 		? new Date(service.warranty_until)
 		: null;
@@ -218,18 +293,36 @@ export default function ServiceDetailPage({
 							: `Expired ${warrantyUntil.toLocaleDateString(locale)}`
 						: `${service.warranty_value ?? 0} ${t(`warranty_${service.warranty_unit}` as never)}`;
 
-	const openWhatsappForStatus = (status: (typeof statuses)[number]) => {
-		const customerPhone =
-			service.customer?.phone || companySettings?.whatsapp || "";
-		if (!customerPhone) return;
-		const cleanPhone = customerPhone.replace(/[^0-9]/g, "");
-		const waPhone = cleanPhone.startsWith("0")
-			? `62${cleanPhone.substring(1)}`
-			: cleanPhone;
-		window.open(
-			`https://wa.me/${waPhone}?text=${encodeURIComponent(buildWhatsappMessage(status))}`,
-			"_blank",
+	const openEditDialog = () => {
+		setEditServiceType(service.service_type);
+		setEditEstimatedDoneAt(
+			service.estimated_done_at
+				? new Date(service.estimated_done_at).toISOString().slice(0, 16)
+				: "",
 		);
+		setEditCustomerNote(service.customer_note ?? "");
+		setEditInternalNote(service.internal_note ?? "");
+		setEditDetailText(String(service.details_json?.text ?? ""));
+		setEditItems(
+			service.items.map((item) => {
+				const product = item.product_id
+					? products.find((entry) => entry.id === item.product_id)
+					: undefined;
+				return {
+					id: item.product_id ?? item.id,
+					name: item.item_name,
+					price: item.price,
+					in_stock: product?.in_stock ?? 0,
+					track_stock: product?.track_stock ?? false,
+					product_type: product?.product_type ?? item.item_type,
+					wholesale_price: product?.wholesale_price ?? null,
+					wholesale_min_qty: product?.wholesale_min_qty ?? null,
+					category: product?.category ?? "",
+					quantity: item.quantity,
+				};
+			}),
+		);
+		setEditOpen(true);
 	};
 
 	return (
@@ -246,51 +339,37 @@ export default function ServiceDetailPage({
 					</h1>
 				</div>
 				<div className="flex flex-wrap gap-2">
+					<Button variant="outline" size="icon" onClick={openEditDialog}>
+						<PencilIcon className="h-4 w-4" />
+					</Button>
+					{serviceWhatsappUrl && (
+						<Button variant="outline" size="icon" asChild>
+							<a href={serviceWhatsappUrl} target="_blank" rel="noreferrer">
+								<MessageCircleIcon className="h-4 w-4" />
+							</a>
+						</Button>
+					)}
 					<Button
 						variant="outline"
+						size="icon"
 						onClick={() =>
 							window.open(`/api/services/${service.id}/pdf`, "_blank")
 						}
 					>
-						<FileTextIcon className="mr-2 h-4 w-4" />
-						{t("printDocument")}
+						<FileTextIcon className="h-4 w-4" />
 					</Button>
-					<Button
-						variant="outline"
-						onClick={() => {
-							setEditServiceType(service.service_type);
-							setEditEstimatedDoneAt(
-								service.estimated_done_at
-									? new Date(service.estimated_done_at)
-											.toISOString()
-											.slice(0, 16)
-									: "",
-							);
-							setEditCustomerNote(service.customer_note ?? "");
-							setEditInternalNote(service.internal_note ?? "");
-							setEditOpen(true);
-						}}
-					>
-						Edit
-					</Button>
-					<Button
-						variant="outline"
-						onClick={() => {
-							setWarrantyUnit(
-								service.warranty_unit as "none" | "day" | "month" | "year",
-							);
-							setWarrantyValue(String(service.warranty_value ?? ""));
-							setWarrantyNotes(service.warranty_notes ?? "");
-							setWarrantyDialogOpen(true);
-						}}
-					>
+					<Button variant="outline" onClick={() => setWarrantyDialogOpen(true)}>
 						Atur Garansi
 					</Button>
 					<Button variant="outline" onClick={() => setPaymentOpen(true)}>
 						{t("receivePayment")}
 					</Button>
-					<Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-						Delete
+					<Button
+						variant="destructive"
+						size="icon"
+						onClick={() => setDeleteOpen(true)}
+					>
+						<Trash2Icon className="h-4 w-4" />
 					</Button>
 				</div>
 			</div>
@@ -541,66 +620,148 @@ export default function ServiceDetailPage({
 			</Dialog>
 
 			<Dialog open={editOpen} onOpenChange={setEditOpen}>
-				<DialogContent>
+				<DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-6xl">
 					<DialogHeader>
 						<DialogTitle>Edit Service</DialogTitle>
 					</DialogHeader>
-					<div className="grid gap-4">
-						<div className="space-y-2">
-							<Label>{t("serviceType")}</Label>
-							<Select
-								value={editServiceType}
-								onValueChange={setEditServiceType}
-							>
-								<SelectTrigger>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{serviceTypes.map((item) => (
-										<SelectItem key={item.id} value={item.value}>
-											{item.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-						<div className="space-y-2">
-							<Label>{t("estimatedDoneAt")}</Label>
-							<Input
-								type="datetime-local"
-								value={editEstimatedDoneAt}
-								onChange={(event) => setEditEstimatedDoneAt(event.target.value)}
+					<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+						<div className="space-y-4">
+							<div className="grid gap-4 md:grid-cols-2">
+								<div className="space-y-2">
+									<Label>{t("serviceType")}</Label>
+									<Select
+										value={editServiceType}
+										onValueChange={setEditServiceType}
+									>
+										<SelectTrigger>
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{serviceTypes.map((item) => (
+												<SelectItem key={item.id} value={item.value}>
+													{item.name}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</div>
+								<div className="space-y-2">
+									<Label>{t("estimatedDoneAt")}</Label>
+									<Input
+										type="datetime-local"
+										value={editEstimatedDoneAt}
+										onChange={(event) =>
+											setEditEstimatedDoneAt(event.target.value)
+										}
+									/>
+								</div>
+							</div>
+							<div className="space-y-2">
+								<Label>{t("serviceDetails")}</Label>
+								<Textarea
+									value={editDetailText}
+									onChange={(event) => setEditDetailText(event.target.value)}
+									rows={3}
+								/>
+							</div>
+							<div className="space-y-2">
+								<Label>{t("customerNote")}</Label>
+								<Textarea
+									value={editCustomerNote}
+									onChange={(event) => setEditCustomerNote(event.target.value)}
+									rows={3}
+								/>
+							</div>
+							<div className="space-y-2">
+								<Label>{t("internalNote")}</Label>
+								<Textarea
+									value={editInternalNote}
+									onChange={(event) => setEditInternalNote(event.target.value)}
+									rows={3}
+								/>
+							</div>
+							<POSProductCatalog
+								products={filteredProducts}
+								selectedProducts={editItems}
+								selectedCategory={selectedCategory}
+								productCategories={productCategories}
+								productSearch={productSearch}
+								viewMode={viewMode}
+								locale={locale}
+								onSearchChange={setProductSearch}
+								onCategoryChange={setSelectedCategory}
+								onViewModeChange={setViewMode}
+								onSelectProduct={(productId) => {
+									const product = products.find(
+										(item) => item.id === productId,
+									);
+									if (!product) return;
+									setEditItems((prev) => {
+										const existing = prev.find(
+											(item) => item.id === product.id,
+										);
+										if (existing) {
+											return prev.map((item) =>
+												item.id === product.id
+													? { ...item, quantity: item.quantity + 1 }
+													: item,
+											);
+										}
+										return [
+											...prev,
+											{
+												id: product.id,
+												name: product.name,
+												price: product.price,
+												in_stock: product.in_stock,
+												track_stock: product.track_stock,
+												product_type: product.product_type,
+												wholesale_price: product.wholesale_price,
+												wholesale_min_qty: product.wholesale_min_qty,
+												category: product.category ?? "",
+												quantity: 1,
+											},
+										];
+									});
+								}}
 							/>
 						</div>
-						<div className="space-y-2">
-							<Label>{t("customerNote")}</Label>
-							<Textarea
-								value={editCustomerNote}
-								onChange={(event) => setEditCustomerNote(event.target.value)}
-								rows={3}
-							/>
-						</div>
-						<div className="space-y-2">
-							<Label>{t("internalNote")}</Label>
-							<Textarea
-								value={editInternalNote}
-								onChange={(event) => setEditInternalNote(event.target.value)}
-								rows={3}
-							/>
-						</div>
-					</div>
-					<DialogFooter>
-						<Button
-							type="button"
-							variant="outline"
-							onClick={() => setEditOpen(false)}
-						>
-							{tc("cancel")}
-						</Button>
-						<Button
-							type="button"
-							disabled={updateService.isPending}
-							onClick={() =>
+						<POSCartPanel
+							items={editItems}
+							products={products}
+							note={editCustomerNote}
+							total={editTotal}
+							locale={locale}
+							title={t("serviceSummary")}
+							actionLabel={tc("update")}
+							isPending={updateService.isPending}
+							canCreate={editItems.length > 0}
+							onNoteChange={setEditCustomerNote}
+							onQuantityChange={(productId, delta) =>
+								setEditItems((prev) =>
+									prev.map((item) =>
+										item.id === productId
+											? {
+													...item,
+													quantity: Math.max(1, item.quantity + delta),
+												}
+											: item,
+									),
+								)
+							}
+							onPriceChange={(productId, price) =>
+								setEditItems((prev) =>
+									prev.map((item) =>
+										item.id === productId ? { ...item, price } : item,
+									),
+								)
+							}
+							onRemoveProduct={(productId) =>
+								setEditItems((prev) =>
+									prev.filter((item) => item.id !== productId),
+								)
+							}
+							onCreateOrder={() =>
 								updateService.mutate({
 									id: service.id,
 									serviceType: editServiceType,
@@ -609,10 +770,27 @@ export default function ServiceDetailPage({
 										: null,
 									customerNote: editCustomerNote,
 									internalNote: editInternalNote,
+									details: { text: editDetailText },
+									items: editItems.map((item) => ({
+										id: item.id,
+										quantity: item.quantity,
+										price: item.price,
+										name: item.name,
+										lineType:
+											item.product_type === "service" ? "service" : "product",
+									})),
+									total: editTotal,
 								})
 							}
+						/>
+					</div>
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => setEditOpen(false)}
 						>
-							{tc("save")}
+							{tc("cancel")}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

@@ -8,6 +8,13 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@finopenpos/ui/components/card";
+import {
+	Dialog,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@finopenpos/ui/components/dialog";
 import { Skeleton } from "@finopenpos/ui/components/skeleton";
 import {
 	Table,
@@ -18,14 +25,27 @@ import {
 	TableRow,
 } from "@finopenpos/ui/components/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftIcon, DownloadIcon, PrinterIcon } from "lucide-react";
+import {
+	ArrowLeftIcon,
+	DownloadIcon,
+	MessageCircleIcon,
+	PencilIcon,
+	PrinterIcon,
+	Trash2Icon,
+} from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { InvoicePDF } from "@/components/invoice-pdf";
 import { PaymentDialog } from "@/components/payment-dialog";
+import { POSCartPanel } from "@/components/pos-cart-panel";
+import { POSProductCatalog } from "@/components/pos-product-catalog";
+import type { POSProductItem } from "@/components/pos-types";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
 
@@ -33,6 +53,16 @@ const PDFDownloadLink = dynamic(
 	() => import("@react-pdf/renderer").then((mod) => mod.PDFDownloadLink),
 	{ ssr: false },
 );
+
+function toWhatsappUrl(phone: string | null | undefined, message: string) {
+	if (!phone) return null;
+	const cleanPhone = phone.replace(/[^0-9]/g, "");
+	const waPhone = cleanPhone.startsWith("0")
+		? `62${cleanPhone.slice(1)}`
+		: cleanPhone;
+	if (!waPhone) return null;
+	return `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
+}
 
 export default function OrderDetailPage({
 	params,
@@ -43,44 +73,34 @@ export default function OrderDetailPage({
 	const orderId = Number.parseInt(id, 10);
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
+	const router = useRouter();
 	const { data: order, isLoading } = useQuery(
 		trpc.orders.get.queryOptions({ id: orderId }),
 	);
 	const { data: paymentMethods = [] } = useQuery(
 		trpc.paymentMethods.list.queryOptions(),
 	);
+	const { data: products = [] } = useQuery(trpc.products.list.queryOptions());
+	const { data: companySettings } = useQuery(
+		trpc.companySettings.get.queryOptions(),
+	);
 	const t = useTranslations("orders");
 	const tc = useTranslations("common");
 	const locale = useLocale();
 	const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
-
 	const [isMounted, setIsMounted] = useState(false);
+	const [editOpen, setEditOpen] = useState(false);
+	const [deleteOpen, setDeleteOpen] = useState(false);
+	const [editItems, setEditItems] = useState<POSProductItem[]>([]);
+	const [editNote, setEditNote] = useState("");
+	const [productSearch, setProductSearch] = useState("");
+	const [selectedCategory, setSelectedCategory] = useState("all");
+	const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+	const search = useDebouncedValue(productSearch, 250);
+
 	useEffect(() => {
 		setIsMounted(true);
 	}, []);
-
-	const { data: companySettings } = useQuery(
-		trpc.companySettings.get.queryOptions(),
-	);
-
-	const pdfLabels = {
-		invoice: t("invoice"),
-		date: tc("date"),
-		status: t("paymentStatus"),
-		customer: t("customer"),
-		item: t("item"),
-		qty: t("quantity"),
-		price: t("unitPrice"),
-		subtotal: t("subtotal"),
-		total: tc("total"),
-		paidAmount: t("paidAmount"),
-		remainingAmount: t("remainingAmount"),
-		paid: t("paid"),
-		unpaid: t("unpaid"),
-		partial: t("partial"),
-		companyDetails: "Detail Perusahaan",
-		thankYou: "Terima kasih atas kunjungan Anda!",
-	};
 
 	const receivePaymentMutation = useMutation(
 		trpc.orders.receivePayment.mutationOptions({
@@ -94,6 +114,55 @@ export default function OrderDetailPage({
 			},
 			onError: (err) => toast.error(err.message || t("paymentError")),
 		}),
+	);
+
+	const updateOrderMutation = useMutation(
+		trpc.orders.update.mutationOptions({
+			onSuccess: () => {
+				queryClient.invalidateQueries(
+					trpc.orders.get.queryOptions({ id: orderId }),
+				);
+				queryClient.invalidateQueries(trpc.orders.list.queryOptions());
+				queryClient.invalidateQueries(trpc.products.list.queryOptions());
+				setEditOpen(false);
+				toast.success(t("updated"));
+			},
+			onError: (err) => toast.error(err.message || t("updateError")),
+		}),
+	);
+
+	const deleteOrderMutation = useMutation(
+		trpc.orders.delete.mutationOptions({
+			onSuccess: () => {
+				queryClient.invalidateQueries(trpc.orders.list.queryOptions());
+				queryClient.invalidateQueries(trpc.products.list.queryOptions());
+				router.push("/admin/orders");
+			},
+			onError: (err) => toast.error(err.message || tc("error")),
+		}),
+	);
+
+	const productCategories = useMemo(() => {
+		const names = products
+			.map((product) => product.category)
+			.filter((category): category is string => Boolean(category));
+		return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+	}, [products]);
+	const filteredProducts = useMemo(() => {
+		const q = search.toLowerCase().trim();
+		return products.filter((product) => {
+			const matchesCategory =
+				selectedCategory === "all" || product.category === selectedCategory;
+			const matchesSearch =
+				!q ||
+				product.name.toLowerCase().includes(q) ||
+				(product.category ?? "").toLowerCase().includes(q);
+			return matchesCategory && matchesSearch;
+		});
+	}, [products, search, selectedCategory]);
+	const editTotal = editItems.reduce(
+		(sum, item) => sum + item.price * item.quantity,
+		0,
 	);
 
 	if (isLoading) {
@@ -121,7 +190,6 @@ export default function OrderDetailPage({
 				timeStyle: "short",
 			})
 		: "—";
-
 	const remainingAmount = Math.max(0, order.total_amount - order.paid_amount);
 	const statusColor =
 		order.payment_status === "paid"
@@ -135,6 +203,19 @@ export default function OrderDetailPage({
 			: order.payment_status === "partial"
 				? t("partial")
 				: t("unpaid");
+	const orderNumber = order.order_number ?? `#${order.id}`;
+	const whatsappMessage = [
+		`${t("invoice")} ${orderNumber}`,
+		order.customer?.name ? `${t("customer")}: ${order.customer.name}` : null,
+		...order.orderItems.map(
+			(item) =>
+				`- ${item.item_name || item.product?.name || `#${item.product_id}`} x${item.quantity} (${formatCurrency(item.price * item.quantity, locale)})`,
+		),
+		`${tc("total")}: ${formatCurrency(order.total_amount, locale)}`,
+	]
+		.filter(Boolean)
+		.join("\n");
+	const whatsappUrl = toWhatsappUrl(order.customer?.phone, whatsappMessage);
 
 	const handleReceivePayment = (data: {
 		paymentMethodId: number;
@@ -147,7 +228,39 @@ export default function OrderDetailPage({
 		});
 	};
 
-	const orderNumber = order.order_number ?? `#${order.id}`;
+	const handleOpenEdit = () => {
+		setEditItems(
+			order.orderItems.map((item) => ({
+				id: item.product_id ?? item.id,
+				name: item.item_name || item.product?.name || `#${item.product_id}`,
+				price: item.price,
+				in_stock: item.product_id
+					? (products.find((product) => product.id === item.product_id)
+							?.in_stock ?? 0)
+					: 0,
+				track_stock: item.product_id
+					? (products.find((product) => product.id === item.product_id)
+							?.track_stock ?? false)
+					: false,
+				product_type: item.product?.product_type ?? item.item_type ?? "product",
+				wholesale_price: item.product_id
+					? (products.find((product) => product.id === item.product_id)
+							?.wholesale_price ?? null)
+					: null,
+				wholesale_min_qty: item.product_id
+					? (products.find((product) => product.id === item.product_id)
+							?.wholesale_min_qty ?? null)
+					: null,
+				category: item.product_id
+					? (products.find((product) => product.id === item.product_id)
+							?.category ?? "")
+					: "",
+				quantity: item.quantity,
+			})),
+		);
+		setEditNote(order.note ?? "");
+		setEditOpen(true);
+	};
 
 	return (
 		<div className="max-w-3xl space-y-6 print:max-w-none">
@@ -162,22 +275,55 @@ export default function OrderDetailPage({
 						{t("orderDetails")} {orderNumber}
 					</h1>
 				</div>
-				<div className="flex flex-col gap-2 sm:flex-row">
+				<div className="flex flex-wrap gap-2">
+					<Button variant="outline" size="icon" onClick={handleOpenEdit}>
+						<PencilIcon className="h-4 w-4" />
+					</Button>
+					{whatsappUrl && (
+						<Button variant="outline" size="icon" asChild>
+							<a href={whatsappUrl} target="_blank" rel="noreferrer">
+								<MessageCircleIcon className="h-4 w-4" />
+							</a>
+						</Button>
+					)}
 					<Button
-						className="w-full sm:w-auto"
 						variant="outline"
+						size="icon"
 						onClick={() => window.open(`/api/orders/${order.id}/pdf`, "_blank")}
 					>
-						<PrinterIcon className="mr-2 h-4 w-4" />
-						{t("printInvoice")}
+						<PrinterIcon className="h-4 w-4" />
 					</Button>
-					{isMounted && order && (
+					<Button
+						variant="destructive"
+						size="icon"
+						onClick={() => setDeleteOpen(true)}
+					>
+						<Trash2Icon className="h-4 w-4" />
+					</Button>
+					{isMounted && (
 						<PDFDownloadLink
 							document={
 								<InvoicePDF
 									order={order}
 									companySettings={companySettings}
-									labels={pdfLabels}
+									labels={{
+										invoice: t("invoice"),
+										date: tc("date"),
+										status: t("paymentStatus"),
+										customer: t("customer"),
+										item: t("item"),
+										qty: t("quantity"),
+										price: t("unitPrice"),
+										subtotal: t("subtotal"),
+										total: tc("total"),
+										paidAmount: t("paidAmount"),
+										remainingAmount: t("remainingAmount"),
+										paid: t("paid"),
+										unpaid: t("unpaid"),
+										partial: t("partial"),
+										companyDetails: "Detail Perusahaan",
+										thankYou: "Terima kasih atas kunjungan Anda!",
+									}}
 								/>
 							}
 							fileName={`invoice-${order.id}.pdf`}
@@ -195,15 +341,6 @@ export default function OrderDetailPage({
 						</PDFDownloadLink>
 					)}
 				</div>
-			</div>
-
-			<div className="hidden print:block">
-				<h1 className="font-bold text-3xl">
-					{t("invoice")} {orderNumber}
-				</h1>
-				<p className="mt-1 text-muted-foreground text-sm">
-					{tc("date")}: {createdAtLabel}
-				</p>
 			</div>
 
 			<Card className="print:border-none print:shadow-none">
@@ -316,7 +453,7 @@ export default function OrderDetailPage({
 				</CardContent>
 			</Card>
 
-			{order.orderItems && order.orderItems.length > 0 && (
+			{order.orderItems.length > 0 && (
 				<Card>
 					<CardHeader>
 						<CardTitle>{t("items")}</CardTitle>
@@ -372,6 +509,122 @@ export default function OrderDetailPage({
 					</CardContent>
 				</Card>
 			)}
+
+			<Dialog open={editOpen} onOpenChange={setEditOpen}>
+				<DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-6xl">
+					<DialogHeader>
+						<DialogTitle>{t("editOrder")}</DialogTitle>
+					</DialogHeader>
+					<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+						<div className="space-y-4">
+							<POSProductCatalog
+								products={filteredProducts}
+								selectedProducts={editItems}
+								selectedCategory={selectedCategory}
+								productCategories={productCategories}
+								productSearch={productSearch}
+								viewMode={viewMode}
+								locale={locale}
+								onSearchChange={setProductSearch}
+								onCategoryChange={setSelectedCategory}
+								onViewModeChange={setViewMode}
+								onSelectProduct={(productId) => {
+									const product = products.find(
+										(item) => item.id === productId,
+									);
+									if (!product) return;
+									setEditItems((prev) => {
+										const existing = prev.find(
+											(item) => item.id === product.id,
+										);
+										if (existing) {
+											return prev.map((item) =>
+												item.id === product.id
+													? { ...item, quantity: item.quantity + 1 }
+													: item,
+											);
+										}
+										return [
+											...prev,
+											{
+												id: product.id,
+												name: product.name,
+												price: product.price,
+												in_stock: product.in_stock,
+												track_stock: product.track_stock,
+												product_type: product.product_type,
+												wholesale_price: product.wholesale_price,
+												wholesale_min_qty: product.wholesale_min_qty,
+												category: product.category ?? "",
+												quantity: 1,
+											},
+										];
+									});
+								}}
+							/>
+						</div>
+						<POSCartPanel
+							items={editItems}
+							products={products}
+							note={editNote}
+							total={editTotal}
+							locale={locale}
+							title={t("editOrder")}
+							actionLabel={t("updateOrder")}
+							isPending={updateOrderMutation.isPending}
+							canCreate={editItems.length > 0}
+							onNoteChange={setEditNote}
+							onQuantityChange={(productId, delta) =>
+								setEditItems((prev) =>
+									prev.map((item) =>
+										item.id === productId
+											? {
+													...item,
+													quantity: Math.max(1, item.quantity + delta),
+												}
+											: item,
+									),
+								)
+							}
+							onPriceChange={(productId, price) =>
+								setEditItems((prev) =>
+									prev.map((item) =>
+										item.id === productId ? { ...item, price } : item,
+									),
+								)
+							}
+							onRemoveProduct={(productId) =>
+								setEditItems((prev) =>
+									prev.filter((item) => item.id !== productId),
+								)
+							}
+							onCreateOrder={() =>
+								updateOrderMutation.mutate({
+									id: order.id,
+									note: editNote,
+									products: editItems.map((item) => ({
+										id: item.id,
+										quantity: item.quantity,
+										price: item.price,
+									})),
+									total: editTotal,
+								})
+							}
+						/>
+					</div>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setEditOpen(false)}>
+							{tc("cancel")}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			<DeleteConfirmationDialog
+				open={deleteOpen}
+				onOpenChange={setDeleteOpen}
+				onConfirm={() => deleteOrderMutation.mutate({ id: order.id })}
+			/>
 		</div>
 	);
 }

@@ -28,7 +28,7 @@ const orderWithCustomerSchema = z.object({
 	payment_status: z.string(),
 	user_uid: z.string(),
 	created_at: z.date().nullable(),
-	customer: z.object({ name: z.string() }).nullable(),
+	customer: z.object({ name: z.string(), phone: z.string() }).nullable(),
 });
 
 const orderDetailSchema = z.object({
@@ -42,7 +42,7 @@ const orderDetailSchema = z.object({
 	created_at: z.date().nullable(),
 	paid_amount: z.number(),
 	payment_status: z.string(),
-	customer: z.object({ name: z.string() }).nullable(),
+	customer: z.object({ name: z.string(), phone: z.string() }).nullable(),
 	payments: z.array(
 		z.object({
 			id: z.number(),
@@ -91,7 +91,7 @@ export const ordersRouter = router({
 			const result = await db.query.orders.findFirst({
 				where: and(eq(orders.id, input.id), eq(orders.user_uid, ctx.user.id)),
 				with: {
-					customer: { columns: { name: true } },
+					customer: { columns: { name: true, phone: true } },
 					payments: {
 						columns: {
 							id: true,
@@ -131,7 +131,7 @@ export const ordersRouter = router({
 				where: eq(orders.user_uid, ctx.user.id),
 				with: {
 					customer: {
-						columns: { name: true },
+						columns: { name: true, phone: true },
 					},
 				},
 			});
@@ -302,7 +302,7 @@ export const ordersRouter = router({
 				const customer = input.customerId
 					? await tx.query.customers.findFirst({
 							where: eq(customers.id, input.customerId),
-							columns: { name: true },
+							columns: { name: true, phone: true },
 						})
 					: null;
 
@@ -324,25 +324,102 @@ export const ordersRouter = router({
 				id: z.number(),
 				total_amount: z.number().int().optional(),
 				status: z.enum(["completed", "pending", "cancelled"]).optional(),
+				note: z.string().optional(),
+				products: z
+					.array(
+						z.object({
+							id: z.number(),
+							quantity: z.number().int().positive(),
+							price: z.number().int(),
+							note: z.string().optional(),
+						}),
+					)
+					.optional(),
+				total: z.number().int().optional(),
 			}),
 		)
 		.output(orderWithCustomerSchema)
 		.mutation(async ({ ctx, input }) => {
-			const { id, ...data } = input;
-			const [updated] = await db
-				.update(orders)
-				.set({ ...data, user_uid: ctx.user.id })
-				.where(and(eq(orders.id, id), eq(orders.user_uid, ctx.user.id)))
-				.returning();
+			return db.transaction(async (tx) => {
+				const current = await tx.query.orders.findFirst({
+					where: and(eq(orders.id, input.id), eq(orders.user_uid, ctx.user.id)),
+					with: { orderItems: true },
+				});
+				if (!current) throw new Error("Order not found");
 
-			const customer = updated?.customer_id
-				? await db.query.customers.findFirst({
-						where: eq(customers.id, updated.customer_id),
-						columns: { name: true },
+				if (input.products) {
+					for (const item of current.orderItems) {
+						if (!item.product_id || item.item_type !== "product") continue;
+						const product = await tx.query.products.findFirst({
+							where: and(
+								eq(products.id, item.product_id),
+								eq(products.user_uid, ctx.user.id),
+							),
+						});
+						if (product?.track_stock) {
+							await tx
+								.update(products)
+								.set({ in_stock: sql`${products.in_stock} + ${item.quantity}` })
+								.where(eq(products.id, item.product_id));
+						}
+					}
+					await tx.delete(orderItems).where(eq(orderItems.order_id, input.id));
+					const values = [];
+					for (const item of input.products) {
+						const product = await tx.query.products.findFirst({
+							where: and(
+								eq(products.id, item.id),
+								eq(products.user_uid, ctx.user.id),
+							),
+						});
+						if (!product) throw new Error("Product not found");
+						if (product.product_type === "product" && product.track_stock) {
+							if (product.in_stock < item.quantity) {
+								throw new Error(`${product.name} has insufficient stock`);
+							}
+							await tx
+								.update(products)
+								.set({ in_stock: sql`${products.in_stock} - ${item.quantity}` })
+								.where(eq(products.id, item.id));
+						}
+						values.push({
+							order_id: input.id,
+							product_id: product.id,
+							item_name: product.name,
+							item_type: product.product_type,
+							quantity: item.quantity,
+							price: item.price,
+							cost: product.cost,
+							note: item.note,
+						});
+					}
+					if (values.length) await tx.insert(orderItems).values(values);
+				}
+
+				const totalAmount = input.products
+					? input.products.reduce(
+							(sum, item) => sum + item.price * item.quantity,
+							0,
+						)
+					: input.total_amount;
+				const [updated] = await tx
+					.update(orders)
+					.set({
+						total_amount: totalAmount,
+						status: input.status,
+						note: input.note?.trim() || null,
 					})
-				: null;
-
-			return { ...updated, customer: customer ?? null };
+					.where(and(eq(orders.id, input.id), eq(orders.user_uid, ctx.user.id)))
+					.returning();
+				const paymentUpdated = await recalculateOrderPayment(tx, input.id);
+				const customer = updated.customer_id
+					? await tx.query.customers.findFirst({
+							where: eq(customers.id, updated.customer_id),
+							columns: { name: true, phone: true },
+						})
+					: null;
+				return { ...updated, ...paymentUpdated, customer: customer ?? null };
+			});
 		}),
 
 	receivePayment: protectedProcedure
@@ -416,7 +493,7 @@ export const ordersRouter = router({
 				const customer = updated.customer_id
 					? await tx.query.customers.findFirst({
 							where: eq(customers.id, updated.customer_id),
-							columns: { name: true },
+							columns: { name: true, phone: true },
 						})
 					: null;
 				return { ...updated, customer: customer ?? null };
@@ -443,6 +520,7 @@ export const ordersRouter = router({
 
 				if (!order) return;
 
+				await tx.delete(payments).where(eq(payments.order_id, input.id));
 				await tx
 					.delete(transactions)
 					.where(eq(transactions.order_id, input.id));

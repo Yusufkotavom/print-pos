@@ -1,9 +1,20 @@
+import { redirect } from "next/navigation";
 import { AdminLayout } from "@/components/admin-layout";
+import { getAuthUser } from "@/lib/auth-guard";
 
-export default function Layout({
+export default async function Layout({
 	children,
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
-	return <AdminLayout>{children}</AdminLayout>;
+	const user = await getAuthUser();
+	if (!user) {
+		redirect("/login");
+	}
+	const isPlatformAdmin =
+		(user.role === "super_admin" || user.role === "admin") &&
+		user.status === "active";
+	return (
+		<AdminLayout isPlatformAdmin={isPlatformAdmin}>{children}</AdminLayout>
+	);
 }

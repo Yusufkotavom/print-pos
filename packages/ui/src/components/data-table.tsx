@@ -225,8 +225,8 @@ export function DataTable<T>({
 										key={header.id}
 										className={cn(
 											mobileScroll
-												? "px-2 py-2 text-xs whitespace-nowrap md:px-4 md:text-sm"
-												: "px-2 py-2 text-xs whitespace-nowrap md:px-4 md:text-sm",
+												? "whitespace-nowrap px-2 py-2 text-xs md:px-4 md:text-sm"
+												: "whitespace-nowrap px-2 py-2 text-xs md:px-4 md:text-sm",
 											getColumnMeta(header.column.columnDef.meta).className,
 										)}
 									>
@@ -275,8 +275,8 @@ export function DataTable<T>({
 											key={cell.id}
 											className={cn(
 												mobileScroll
-													? "px-2 py-2 align-middle text-xs whitespace-nowrap md:px-4 md:text-sm"
-													: "max-w-[160px] overflow-hidden text-ellipsis px-2 py-2 align-middle text-xs whitespace-nowrap md:max-w-none md:px-4 md:text-sm",
+													? "whitespace-nowrap px-2 py-2 align-middle text-xs md:px-4 md:text-sm"
+													: "max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap px-2 py-2 align-middle text-xs md:max-w-none md:px-4 md:text-sm",
 												getColumnMeta(cell.column.columnDef.meta).className,
 											)}
 										>

@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db } from "@/lib/db";
 import {
@@ -289,32 +289,117 @@ export const serviceOrdersRouter = router({
 				customerNote: z.string().optional(),
 				internalNote: z.string().optional(),
 				details: z.record(z.string(), z.any()).optional(),
+				items: z
+					.array(
+						z.object({
+							id: z.number().optional(),
+							quantity: z.number().int().positive(),
+							price: z.number().int(),
+							name: z.string().optional(),
+							lineType: z.enum(["service", "product"]).default("product"),
+							note: z.string().optional(),
+						}),
+					)
+					.optional(),
+				total: z.number().int().optional(),
 			}),
 		)
 		.output(serviceOrderSummarySchema)
 		.mutation(async ({ ctx, input }) => {
-			const [updated] = await db
-				.update(serviceOrders)
-				.set({
-					service_type: input.serviceType,
-					estimated_done_at: input.estimatedDoneAt,
-					customer_note: input.customerNote?.trim() || null,
-					internal_note: input.internalNote?.trim() || null,
-					details_json: input.details,
-				})
-				.where(
-					and(
+			return db.transaction(async (tx) => {
+				const current = await tx.query.serviceOrders.findFirst({
+					where: and(
 						eq(serviceOrders.id, input.id),
 						eq(serviceOrders.user_uid, ctx.user.id),
 					),
-				)
-				.returning();
-			if (!updated) throw new Error("Service not found");
-			const customer = await db.query.customers.findFirst({
-				where: eq(customers.id, updated.customer_id ?? 0),
-				columns: { name: true, phone: true },
+					with: { items: true },
+				});
+				if (!current) throw new Error("Service not found");
+
+				if (input.items) {
+					for (const item of current.items) {
+						if (!item.product_id || item.line_type !== "product") continue;
+						const product = await tx.query.products.findFirst({
+							where: and(
+								eq(products.id, item.product_id),
+								eq(products.user_uid, ctx.user.id),
+							),
+						});
+						if (product?.track_stock) {
+							await tx
+								.update(products)
+								.set({ in_stock: sql`${products.in_stock} + ${item.quantity}` })
+								.where(eq(products.id, item.product_id));
+						}
+					}
+					await tx
+						.delete(serviceOrderItems)
+						.where(eq(serviceOrderItems.service_order_id, input.id));
+					const values = [];
+					for (const item of input.items) {
+						const product = item.id
+							? await tx.query.products.findFirst({
+									where: and(
+										eq(products.id, item.id),
+										eq(products.user_uid, ctx.user.id),
+									),
+								})
+							: null;
+						if (item.id && !product) throw new Error("Product not found");
+						if (product?.product_type === "product" && product.track_stock) {
+							if (product.in_stock < item.quantity) {
+								throw new Error(`${product.name} has insufficient stock`);
+							}
+							await tx
+								.update(products)
+								.set({ in_stock: sql`${products.in_stock} - ${item.quantity}` })
+								.where(eq(products.id, product.id));
+						}
+						values.push({
+							service_order_id: input.id,
+							product_id: product?.id,
+							line_type: item.lineType,
+							item_name: product?.name ?? item.name ?? "Service",
+							item_type: product?.product_type ?? item.lineType,
+							quantity: item.quantity,
+							price: item.price,
+							cost: product?.cost ?? 0,
+							note: item.note,
+						});
+					}
+					if (values.length) await tx.insert(serviceOrderItems).values(values);
+				}
+
+				const totalAmount = input.items
+					? input.items.reduce(
+							(sum, item) => sum + item.price * item.quantity,
+							0,
+						)
+					: input.total;
+				const [updated] = await tx
+					.update(serviceOrders)
+					.set({
+						service_type: input.serviceType,
+						estimated_done_at: input.estimatedDoneAt,
+						customer_note: input.customerNote?.trim() || null,
+						internal_note: input.internalNote?.trim() || null,
+						details_json: input.details,
+						total_amount: totalAmount,
+					})
+					.where(
+						and(
+							eq(serviceOrders.id, input.id),
+							eq(serviceOrders.user_uid, ctx.user.id),
+						),
+					)
+					.returning();
+				const paymentUpdated = await recalculateServicePayment(tx, input.id);
+				const customer = await tx.query.customers.findFirst({
+					where: eq(customers.id, updated.customer_id ?? 0),
+					columns: { name: true, phone: true },
+				});
+				return { ...updated, ...paymentUpdated, customer: customer ?? null };
 			});
-			return { ...updated, customer: customer ?? null };
 		}),
 
 	delete: protectedProcedure

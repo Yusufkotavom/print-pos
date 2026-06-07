@@ -8,6 +8,8 @@ import { financialReportsRouter } from "./routers/financial-reports";
 import { ordersRouter } from "./routers/orders";
 import { paymentMethodsRouter } from "./routers/payment-methods";
 import { paymentsRouter } from "./routers/payments";
+import { platformAdminUsersRouter } from "./routers/platform-admin-users";
+import { platformSubscriptionsRouter } from "./routers/platform-subscriptions";
 import { productCategoriesRouter } from "./routers/product-categories";
 import { productsRouter } from "./routers/products";
 import { serviceOrdersRouter } from "./routers/service-orders";
@@ -30,6 +32,8 @@ export const appRouter = router({
 	financialReports: financialReportsRouter,
 	companySettings: companySettingsRouter,
 	cities: citiesRouter,
+	platformAdminUsers: platformAdminUsersRouter,
+	platformSubscriptions: platformSubscriptionsRouter,
 });
 
 export type AppRouter = typeof appRouter;

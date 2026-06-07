@@ -39,6 +39,8 @@ interface POSCartPanelProps {
 	locale: string;
 	isPending?: boolean;
 	canCreate: boolean;
+	title?: string;
+	actionLabel?: string;
 	onNoteChange: (value: string) => void;
 	onQuantityChange: (productId: number, delta: number) => void;
 	onPriceChange: (productId: number, price: number) => void;
@@ -54,6 +56,8 @@ export function POSCartPanel({
 	locale,
 	isPending,
 	canCreate,
+	title,
+	actionLabel,
 	onNoteChange,
 	onQuantityChange,
 	onPriceChange,
@@ -62,11 +66,13 @@ export function POSCartPanel({
 }: POSCartPanelProps) {
 	const t = useTranslations("pos");
 	const tc = useTranslations("common");
+	const resolvedTitle = title ?? t("createOrder");
+	const resolvedActionLabel = actionLabel ?? t("createOrder");
 
 	return (
 		<Card className="h-fit lg:sticky lg:top-4">
 			<CardHeader>
-				<CardTitle>{t("createOrder")}</CardTitle>
+				<CardTitle>{resolvedTitle}</CardTitle>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				{items.length === 0 ? (
@@ -169,7 +175,7 @@ export function POSCartPanel({
 						className="w-full"
 					>
 						{isPending && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
-						{t("createOrder")}
+						{resolvedActionLabel}
 					</Button>
 				</div>
 			</CardContent>

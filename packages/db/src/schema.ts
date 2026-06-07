@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm";
 import {
 	boolean,
+	index,
 	integer,
 	jsonb,
 	pgTable,
@@ -9,6 +10,7 @@ import {
 	timestamp,
 	varchar,
 } from "drizzle-orm/pg-core";
+import { user } from "./auth-schema";
 
 export {
 	account,
@@ -19,6 +21,52 @@ export {
 	userRelations,
 	verification,
 } from "./auth-schema";
+
+export const plans = pgTable(
+	"plans",
+	{
+		id: serial("id").primaryKey(),
+		name: varchar("name", { length: 255 }).notNull(),
+		price: integer("price").notNull().default(0),
+		interval: varchar("interval", { length: 20 }).notNull().default("month"),
+		features: jsonb("features").$type<string[]>().notNull().default([]),
+		status: varchar("status", { length: 20 }).notNull().default("active"),
+		created_at: timestamp("created_at").defaultNow().notNull(),
+		updated_at: timestamp("updated_at")
+			.defaultNow()
+			.$onUpdate(() => new Date())
+			.notNull(),
+	},
+	(table) => [index("plans_status_idx").on(table.status)],
+);
+
+export const subscriptions = pgTable(
+	"subscriptions",
+	{
+		id: serial("id").primaryKey(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		planId: integer("plan_id").references(() => plans.id, {
+			onDelete: "set null",
+		}),
+		status: varchar("status", { length: 20 }).notNull().default("active"),
+		currentPeriodStart: timestamp("current_period_start").notNull(),
+		currentPeriodEnd: timestamp("current_period_end").notNull(),
+		cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+		cancelledAt: timestamp("cancelled_at"),
+		created_at: timestamp("created_at").defaultNow().notNull(),
+		updated_at: timestamp("updated_at")
+			.defaultNow()
+			.$onUpdate(() => new Date())
+			.notNull(),
+	},
+	(table) => [
+		index("subscriptions_user_id_idx").on(table.userId),
+		index("subscriptions_plan_id_idx").on(table.planId),
+		index("subscriptions_status_idx").on(table.status),
+	],
+);
 
 export const products = pgTable("products", {
 	id: serial("id").primaryKey(),
@@ -265,6 +313,21 @@ export const companySettings = pgTable("company_settings", {
 	created_at: timestamp("created_at").defaultNow().notNull(),
 	updated_at: timestamp("updated_at").defaultNow(),
 });
+
+export const plansRelations = relations(plans, ({ many }) => ({
+	subscriptions: many(subscriptions),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+	user: one(user, {
+		fields: [subscriptions.userId],
+		references: [user.id],
+	}),
+	plan: one(plans, {
+		fields: [subscriptions.planId],
+		references: [plans.id],
+	}),
+}));
 
 export const ordersRelations = relations(orders, ({ one, many }) => ({
 	customer: one(customers, {
