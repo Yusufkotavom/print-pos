@@ -313,14 +313,14 @@ export default function ServiceDetailPage({
 	);
 
 	const productCategories = useMemo(() => {
-		const names = products
+		const names = (products || [])
 			.map((product) => product.category)
 			.filter((category): category is string => Boolean(category));
 		return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
 	}, [products]);
 	const filteredProducts = useMemo(() => {
 		const q = search.toLowerCase().trim();
-		return products.filter((product) => {
+		return (products || []).filter((product) => {
 			const matchesCategory =
 				selectedCategory === "all" || product.category === selectedCategory;
 			const matchesSearch =
@@ -330,7 +330,7 @@ export default function ServiceDetailPage({
 			return matchesCategory && matchesSearch;
 		});
 	}, [products, search, selectedCategory]);
-	const editTotal = editItems.reduce(
+	const editTotal = (editItems || []).reduce(
 		(sum, item) => sum + item.price * item.quantity,
 		0,
 	);
@@ -339,7 +339,10 @@ export default function ServiceDetailPage({
 	if (!service)
 		return <div className="text-muted-foreground">{t("serviceNotFound")}</div>;
 
-	const productInformation = service.items
+	const safeItems = Array.isArray(service?.items) ? service.items : [];
+	const safePayments = Array.isArray(service?.payments) ? service.payments : [];
+
+	const productInformation = safeItems
 		.map((item) => `- ${item.item_name} x${item.quantity}`)
 		.join("\n");
 	const productTemplate =
@@ -380,7 +383,7 @@ export default function ServiceDetailPage({
 		service.customer?.name
 			? `${t("customer")}: ${service.customer.name}`
 			: null,
-		...service.items.map(
+		...safeItems.map(
 			(item) =>
 				`- ${item.item_name} x${item.quantity} (${formatCurrency(item.price * item.quantity, locale)})`,
 		),
@@ -431,7 +434,7 @@ export default function ServiceDetailPage({
 		setEditInternalNote(service.internal_note ?? "");
 		setEditDetailText(String(service.details_json?.text ?? ""));
 		setEditItems(
-			service.items.map((item) => {
+			safeItems.map((item) => {
 				const product = item.product_id
 					? products.find((entry) => entry.id === item.product_id)
 					: undefined;
@@ -602,7 +605,7 @@ export default function ServiceDetailPage({
 					<CardTitle>Riwayat Pembayaran</CardTitle>
 				</CardHeader>
 				<CardContent>
-					{service.payments.length === 0 ? (
+					{safePayments.length === 0 ? (
 						<div className="text-muted-foreground text-sm">
 							Belum ada pembayaran.
 						</div>
@@ -618,7 +621,7 @@ export default function ServiceDetailPage({
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{service.payments.map((payment) => (
+								{safePayments.map((payment) => (
 									<TableRow key={payment.id}>
 										<TableCell>
 											{payment.payment_number ?? `#${payment.id}`}
@@ -679,7 +682,7 @@ export default function ServiceDetailPage({
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{service.items.map((item) => (
+							{safeItems.map((item) => (
 								<TableRow key={item.id}>
 									<TableCell>{item.item_name}</TableCell>
 									<TableCell>
@@ -747,7 +750,7 @@ export default function ServiceDetailPage({
 									status,
 								});
 								setStatusDialogOpen(false);
-								toast.success("Status queued");
+								toast.success(t("statusUpdated"));
 								if (statusWhatsappEnabled) openWhatsappForStatus(status);
 							}}
 						>
@@ -914,7 +917,7 @@ export default function ServiceDetailPage({
 								});
 								void queueServiceAction("update", payload);
 								setEditOpen(false);
-								toast.success("Service update queued");
+								toast.success("Service diperbarui");
 							}}
 						/>
 					</div>
@@ -1013,7 +1016,7 @@ export default function ServiceDetailPage({
 								});
 								void queueServiceAction("updateWarranty", payload);
 								setWarrantyDialogOpen(false);
-								toast.success("Warranty queued");
+								toast.success("Garansi diperbarui");
 							}}
 						>
 							{tc("save")}
@@ -1048,7 +1051,7 @@ export default function ServiceDetailPage({
 					});
 					void queueServiceAction("receivePayment", payload);
 					setPaymentOpen(false);
-					toast.success("Payment queued");
+					toast.success(t("paymentReceived"));
 				}}
 			/>
 			<DeleteConfirmationDialog
@@ -1057,7 +1060,7 @@ export default function ServiceDetailPage({
 				onConfirm={() => {
 					void queueServiceAction("delete", { id: service.id });
 					void removeCachedServiceOrder(service.id);
-					toast.success("Delete queued");
+					toast.success("Service dihapus");
 					window.location.href = "/admin/services";
 				}}
 				description="Service dengan pembayaran tidak bisa dihapus."

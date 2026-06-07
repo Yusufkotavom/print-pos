@@ -1,16 +1,23 @@
 "use client";
 
 import { Button } from "@finopenpos/ui/components/button";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
 	CheckCircle2Icon,
 	CloudOffIcon,
 	DownloadIcon,
 	XIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { SYNC_MESSAGE } from "@/lib/local-db/background-sync";
+import {
+	markAutoOfflineWarmupStarted,
+	shouldRunAutoOfflineWarmup,
+	warmupOfflineCache,
+} from "@/lib/local-db/offline-warmup";
+import { createOfflineWarmupQueries } from "@/lib/local-db/offline-warmup-queries";
 import { syncReadyQueue } from "@/lib/local-db/sync-engine";
+import { createQueuedSyncHandlers } from "@/lib/local-db/sync-handlers";
 import { useTRPC } from "@/lib/trpc/client";
 
 type BeforeInstallPromptEvent = Event & {
@@ -24,6 +31,7 @@ const PWA_CACHE_NAME = "finopenpos-v5";
 
 export function PWAProvider() {
 	const trpc = useTRPC();
+	const queryClient = useQueryClient();
 	const [deferredPrompt, setDeferredPrompt] =
 		useState<BeforeInstallPromptEvent | null>(null);
 	const [dismissed, setDismissed] = useState(false);
@@ -178,99 +186,56 @@ export function PWAProvider() {
 		};
 	}, [dismissed]);
 
-	useEffect(() => {
-		const runSync = () => {
-			if (!navigator.onLine) return;
-			void syncReadyQueue({
-				createOrder: (payload) =>
-					createOrderMutation.mutateAsync(payload as never) as Promise<{
-						id?: number;
-					}>,
-				updateOrder: (payload) =>
-					updateOrderMutation.mutateAsync(payload as never),
-				receiveOrderPayment: (payload) =>
-					receiveOrderPaymentMutation.mutateAsync(payload as never),
-				deleteOrder: (payload) =>
-					deleteOrderMutation.mutateAsync(payload as never),
-				createServiceOrder: (payload) =>
-					createServiceOrderMutation.mutateAsync(payload as never) as Promise<{
-						id?: number;
-					}>,
-				updateServiceOrder: (payload) =>
-					updateServiceMutation.mutateAsync(payload as never),
-				updateServiceOrderStatus: (payload) =>
-					updateServiceStatusMutation.mutateAsync(payload as never),
-				receiveServiceOrderPayment: (payload) =>
-					receiveServicePaymentMutation.mutateAsync(payload as never),
-				updateServiceOrderWarranty: (payload) =>
-					updateServiceWarrantyMutation.mutateAsync(payload as never),
-				deleteServiceOrder: (payload) =>
-					deleteServiceMutation.mutateAsync(payload as never),
-				createProduct: (payload) =>
-					createProductMutation.mutateAsync(payload as never) as Promise<{
-						id?: number;
-					}>,
-				updateProduct: (payload) =>
-					updateProductMutation.mutateAsync(payload as never),
-				deleteProduct: (payload) =>
-					deleteProductMutation.mutateAsync(payload as never),
-				updateProductImage: async (payload) => {
-					await updateProductMutation.mutateAsync(payload);
+	const runSync = useCallback(() => {
+		if (!navigator.onLine) return;
+		void syncReadyQueue(
+			createQueuedSyncHandlers({
+				orders: {
+					create: createOrderMutation,
+					update: updateOrderMutation,
+					receivePayment: receiveOrderPaymentMutation,
+					delete: deleteOrderMutation,
 				},
-				createProductCategory: (payload) =>
-					createProductCategoryMutation.mutateAsync(
-						payload as never,
-					) as Promise<{
-						id?: number;
-					}>,
-				updateProductCategory: (payload) =>
-					updateProductCategoryMutation.mutateAsync(payload as never),
-				deleteProductCategory: (payload) =>
-					deleteProductCategoryMutation.mutateAsync(payload as never),
-				createPaymentMethod: (payload) =>
-					createPaymentMethodMutation.mutateAsync(payload as never) as Promise<{
-						id?: number;
-					}>,
-				updatePaymentMethod: (payload) =>
-					updatePaymentMethodMutation.mutateAsync(payload as never),
-				deletePaymentMethod: (payload) =>
-					deletePaymentMethodMutation.mutateAsync(payload as never),
-				createCustomer: (payload) =>
-					createCustomerMutation.mutateAsync(payload as never) as Promise<{
-						id?: number;
-					}>,
-				updateCustomer: (payload) =>
-					updateCustomerMutation.mutateAsync(payload as never),
-				deleteCustomer: (payload) =>
-					deleteCustomerMutation.mutateAsync(payload as never),
-				createTransaction: (payload) =>
-					createTransactionMutation.mutateAsync(payload as never) as Promise<{
-						id?: number;
-					}>,
-				updateTransaction: (payload) =>
-					updateTransactionMutation.mutateAsync(payload as never),
-				deleteTransaction: (payload) =>
-					deleteTransactionMutation.mutateAsync(payload as never),
-				createTransactionCategory: (payload) =>
-					createTransactionCategoryMutation.mutateAsync(
-						payload as never,
-					) as Promise<{ id?: number }>,
-				updateTransactionCategory: (payload) =>
-					updateTransactionCategoryMutation.mutateAsync(payload as never),
-				deleteTransactionCategory: (payload) =>
-					deleteTransactionCategoryMutation.mutateAsync(payload as never),
-			});
-		};
-		const handleMessage = (event: MessageEvent) => {
-			if (event.data?.type === SYNC_MESSAGE) runSync();
-		};
-		const handleOnline = () => runSync();
-		navigator.serviceWorker?.addEventListener("message", handleMessage);
-		window.addEventListener("online", handleOnline);
-		return () => {
-			navigator.serviceWorker?.removeEventListener("message", handleMessage);
-			window.removeEventListener("online", handleOnline);
-		};
+				serviceOrders: {
+					create: createServiceOrderMutation,
+					update: updateServiceMutation,
+					updateStatus: updateServiceStatusMutation,
+					receivePayment: receiveServicePaymentMutation,
+					updateWarranty: updateServiceWarrantyMutation,
+					delete: deleteServiceMutation,
+				},
+				products: {
+					create: createProductMutation,
+					update: updateProductMutation,
+					delete: deleteProductMutation,
+				},
+				productCategories: {
+					create: createProductCategoryMutation,
+					update: updateProductCategoryMutation,
+					delete: deleteProductCategoryMutation,
+				},
+				paymentMethods: {
+					create: createPaymentMethodMutation,
+					update: updatePaymentMethodMutation,
+					delete: deletePaymentMethodMutation,
+				},
+				customers: {
+					create: createCustomerMutation,
+					update: updateCustomerMutation,
+					delete: deleteCustomerMutation,
+				},
+				transactions: {
+					create: createTransactionMutation,
+					update: updateTransactionMutation,
+					delete: deleteTransactionMutation,
+				},
+				transactionCategories: {
+					create: createTransactionCategoryMutation,
+					update: updateTransactionCategoryMutation,
+					delete: deleteTransactionCategoryMutation,
+				},
+			}),
+		);
 	}, [
 		createOrderMutation,
 		updateOrderMutation,
@@ -301,6 +266,36 @@ export function PWAProvider() {
 		updateTransactionCategoryMutation,
 		deleteTransactionCategoryMutation,
 	]);
+
+	useEffect(() => {
+		const handleMessage = (event: MessageEvent) => {
+			if (event.data?.type === SYNC_MESSAGE) runSync();
+		};
+		const handleOnline = () => runSync();
+		navigator.serviceWorker?.addEventListener("message", handleMessage);
+		window.addEventListener("online", handleOnline);
+		return () => {
+			navigator.serviceWorker?.removeEventListener("message", handleMessage);
+			window.removeEventListener("online", handleOnline);
+		};
+	}, [runSync]);
+
+	useEffect(() => {
+		if (!isOnline || offlineStatus !== "ready") return;
+		let cancelled = false;
+		void (async () => {
+			const shouldRun = await shouldRunAutoOfflineWarmup();
+			if (!shouldRun || cancelled) return;
+			await markAutoOfflineWarmupStarted();
+			await warmupOfflineCache({
+				queryClient,
+				queries: createOfflineWarmupQueries(trpc as never),
+			});
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [isOnline, offlineStatus, queryClient, trpc]);
 
 	const statusText = useMemo(() => {
 		if (offlineStatus === "unsupported") return "Offline app not supported";

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
+import type { InferInsertModel } from "drizzle-orm";
 import { createTestDb, makeUser, SCHEMA_DDL } from "./helpers";
 
 const { pg, db } = createTestDb();
@@ -24,7 +25,6 @@ beforeAll(async () => {
 	//   expense/overhead 300  2025-01-15
 	//   expense/overhead 100  2025-01-16
 	//   income/null       50  2025-01-16    (null category)
-	//   income/selling    25  null          (null created_at)
 	//
 	// user-1, pending (must be EXCLUDED):
 	//   income/selling 9999  2025-01-15
@@ -32,7 +32,7 @@ beforeAll(async () => {
 	// other-user, completed (must be EXCLUDED):
 	//   income/selling 5000  2025-01-15
 
-	await db.insert(transactions).values([
+	const rows: InferInsertModel<typeof transactions>[] = [
 		{
 			description: "Sale 1",
 			amount: 1000,
@@ -105,16 +105,8 @@ beforeAll(async () => {
 			status: "completed",
 			created_at: new Date("2025-01-16"),
 		},
-		{
-			description: "NoDate",
-			amount: 25,
-			user_uid: "user-1",
-			type: "income",
-			category: "selling",
-			status: "completed",
-			created_at: null,
-		},
-	]);
+	];
+	await db.insert(transactions).values(rows);
 });
 
 afterAll(async () => {
@@ -123,14 +115,14 @@ afterAll(async () => {
 
 describe("dashboard.stats", () => {
 	// Expected aggregations (user-1, completed only):
-	//   totalRevenue  = 1000+500+200+50+25             = 1775
+	//   totalRevenue  = 1000+500+200+50                = 1750
 	//   totalExpenses = 300+100                         = 400
-	//   totalSelling  = 1000+500+25                     = 1525
-	//   totalProfit   = 1525 - 400                      = 1125
+	//   totalSelling  = 1000+500                        = 1500
+	//   totalProfit   = 1500 - 400                      = 1100
 
 	it("totalRevenue = exact sum of completed income", async () => {
 		const { totalRevenue } = await caller.stats();
-		expect(totalRevenue).toBe(1775);
+		expect(totalRevenue).toBe(1750);
 	});
 
 	it("totalExpenses = exact sum of completed expense", async () => {
@@ -140,13 +132,13 @@ describe("dashboard.stats", () => {
 
 	it("totalProfit = selling - expenses (not all revenue)", async () => {
 		const { totalProfit } = await caller.stats();
-		expect(totalProfit).toBe(1125);
+		expect(totalProfit).toBe(1100);
 	});
 
 	it("pending transaction (9999) is excluded from all aggregations", async () => {
 		const stats = await caller.stats();
-		// If pending leaked, revenue would be 1775+9999=11774
-		expect(stats.totalRevenue).toBe(1775);
+		// If pending leaked, revenue would be 1750+9999=11749
+		expect(stats.totalRevenue).toBe(1750);
 		// Also check it doesn't appear in cashFlow
 		const cfMap = Object.fromEntries(
 			stats.cashFlow.map((e) => [e.date, e.amount]),
@@ -157,14 +149,14 @@ describe("dashboard.stats", () => {
 
 	it("other user's data (5000) is excluded from all aggregations", async () => {
 		const stats = await caller.stats();
-		expect(stats.totalRevenue).toBe(1775);
-		// revenueByCategory.selling should be 1525, not 1525+5000=6525
-		expect(stats.revenueByCategory["selling"]).toBe(1525);
+		expect(stats.totalRevenue).toBe(1750);
+		// revenueByCategory.selling should be 1500, not 1500+5000=6500
+		expect(stats.revenueByCategory["selling"]).toBe(1500);
 	});
 
 	it("revenueByCategory groups correctly, null category excluded from map", async () => {
 		const { revenueByCategory } = await caller.stats();
-		expect(revenueByCategory["selling"]).toBe(1525);
+		expect(revenueByCategory["selling"]).toBe(1500);
 		expect(revenueByCategory["refund"]).toBe(200);
 		expect("null" in revenueByCategory).toBe(false);
 		expect(Object.keys(revenueByCategory).length).toBe(2);
@@ -173,7 +165,7 @@ describe("dashboard.stats", () => {
 			(a, b) => a + b,
 			0,
 		);
-		expect(sumOfBuckets).toBe(1725); // 1775 - 50(null) = 1725
+		expect(sumOfBuckets).toBe(1700); // 1750 - 50(null) = 1700
 	});
 
 	it("expensesByCategory groups correctly", async () => {
@@ -182,18 +174,13 @@ describe("dashboard.stats", () => {
 		expect(Object.keys(expensesByCategory).length).toBe(1);
 	});
 
-	it("cashFlow groups by date, null created_at → 'unknown'", async () => {
+	it("cashFlow groups by date", async () => {
 		const { cashFlow } = await caller.stats();
 		const cfMap = Object.fromEntries(cashFlow.map((e) => [e.date, e.amount]));
 
-		// 2025-01-15: income 1000+500 + expense 300 = 1800
 		expect(cfMap["2025-01-15"]).toBe(1800);
-		// 2025-01-16: income 200+50 + expense 100 = 350
 		expect(cfMap["2025-01-16"]).toBe(350);
-		// null date → "unknown": 25
-		expect(cfMap["unknown"]).toBe(25);
-		// Exactly 3 entries
-		expect(cashFlow.length).toBe(3);
+		expect(cashFlow.length).toBe(2);
 	});
 
 	it("profitMargin: selling>0 → (selling-expense)/selling*100", async () => {

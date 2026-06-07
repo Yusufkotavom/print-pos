@@ -1,7 +1,9 @@
 import { count, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { subscriptions, user } from "@/lib/db/schema";
+import { createDefaultWorkspace } from "@/lib/onboarding/default-data";
 import { adminProcedure, router } from "../init";
 
 const requireSuperAdmin = (role?: string | null) => {
@@ -87,6 +89,50 @@ export const platformAdminUsersRouter = router({
 						: null,
 				};
 			});
+		}),
+	create: adminProcedure
+		.input(
+			z.object({
+				name: z.string().min(1),
+				email: z.email(),
+				password: z.string().min(8),
+				role: z.enum(["user", "admin", "super_admin"]).default("user"),
+				status: z.enum(["active", "inactive", "suspended"]).default("active"),
+			}),
+		)
+		.output(userSchema.omit({ subscription: true }))
+		.mutation(async ({ ctx, input }) => {
+			requireSuperAdmin(ctx.user.role);
+			const existing = await db.query.user.findFirst({
+				where: eq(user.email, input.email),
+				columns: { id: true },
+			});
+			if (existing) throw new Error("Email already registered");
+			const result = await auth.api.signUpEmail({
+				body: {
+					name: input.name,
+					email: input.email,
+					password: input.password,
+				},
+			});
+			await db
+				.update(user)
+				.set({ role: input.role, status: input.status })
+				.where(eq(user.id, result.user.id));
+			await createDefaultWorkspace(result.user.id, input.name, input.email);
+			const created = await db.query.user.findFirst({
+				where: eq(user.id, result.user.id),
+				columns: {
+					id: true,
+					name: true,
+					email: true,
+					role: true,
+					status: true,
+					createdAt: true,
+				},
+			});
+			if (!created) throw new Error("User not found");
+			return created;
 		}),
 	update: adminProcedure
 		.input(

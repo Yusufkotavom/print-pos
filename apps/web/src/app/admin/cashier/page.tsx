@@ -70,10 +70,13 @@ type TransactionUpdateInput = RouterInputs["transactions"]["update"];
 type TransactionType = "income" | "expense";
 type TransactionStatus = "completed" | "pending";
 
+const EMPTY_TRANSACTIONS: Transaction[] = [];
+const EMPTY_CATEGORIES: TransactionCategory[] = [];
+
 export default function Cashier() {
 	const trpc = useTRPC();
 	const {
-		data: remoteTransactions = [],
+		data: remoteTransactions = EMPTY_TRANSACTIONS,
 		isLoading,
 		error,
 	} = useQuery(trpc.transactions.list.queryOptions());
@@ -86,7 +89,7 @@ export default function Cashier() {
 			? cachedTransactions
 			: remoteTransactions;
 	const showSkeleton = isLoading && cachedTransactions.length === 0;
-	const { data: remoteTransactionCategories = [], error: categoriesError } =
+	const { data: remoteTransactionCategories = EMPTY_CATEGORIES, error: categoriesError } =
 		useQuery(trpc.transactionCategories.list.queryOptions());
 	const [cachedTransactionCategories, setCachedTransactionCategories] =
 		useState<TransactionCategory[]>([]);
@@ -500,7 +503,7 @@ export default function Cashier() {
 									</TableCell>
 									<TableCell>
 										<Select
-											value={inlineForm.category}
+											value={inlineForm.category || undefined}
 											onValueChange={(value) =>
 												setInlineForm({ ...inlineForm, category: value })
 											}
@@ -640,7 +643,7 @@ export default function Cashier() {
 						<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
 							<Label htmlFor="create-category">{tc("category")}</Label>
 							<Select
-								value={inlineForm.category}
+								value={inlineForm.category || undefined}
 								onValueChange={(value) =>
 									setInlineForm({ ...inlineForm, category: value })
 								}
@@ -758,7 +761,7 @@ export default function Cashier() {
 									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
 										<Label htmlFor="edit-cat">{tc("category")}</Label>
 										<Select
-											value={field.state.value}
+											value={field.state.value || undefined}
 											onValueChange={(value) => field.handleChange(value)}
 										>
 											<SelectTrigger id="edit-cat" className="col-span-3">

@@ -2,7 +2,7 @@
 
 import { ChevronsUpDown } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { cn } from "../lib/utils";
 import { Button } from "./button";
 import {
@@ -37,6 +37,11 @@ export function Combobox({
 	const [internalValue, setInternalValue] = useState("");
 	const [popoverWidth, setPopoverWidth] = useState(0);
 	const tc = useTranslations("common");
+	const setTriggerRef = useCallback((element: HTMLButtonElement | null) => {
+		if (!element) return;
+		const width = element.offsetWidth;
+		setPopoverWidth((current) => (current === width ? current : width));
+	}, []);
 
 	const displayValue = controlledValue ?? internalValue;
 
@@ -52,11 +57,7 @@ export function Combobox({
 						!displayValue && "text-muted-foreground",
 						className,
 					)}
-					ref={(element) => {
-						if (element) {
-							setPopoverWidth(element.offsetWidth);
-						}
-					}}
+					ref={setTriggerRef}
 				>
 					<span className="truncate">{displayValue || placeholder}</span>
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />

@@ -401,12 +401,13 @@ export default function AdminSubscriptionsPage() {
 		);
 
 	return (
-		<div className="grid gap-6">
-			<Card className="p-3 sm:p-6">
-				<CardHeader className="flex flex-row items-center justify-between p-0">
+		<div className="flex flex-col gap-6 min-w-0">
+			<Card className="flex flex-col gap-4 p-3 sm:gap-6 sm:p-6">
+				<CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 space-y-0 p-0 pb-2">
 					<CardTitle>{t("plans")}</CardTitle>
 					<Button
 						size="sm"
+						className="w-full sm:w-auto"
 						onClick={() => {
 							setEditingPlan(null);
 							planForm.reset();
@@ -417,24 +418,25 @@ export default function AdminSubscriptionsPage() {
 						{t("addPlan")}
 					</Button>
 				</CardHeader>
-				<CardContent className="p-0 pt-4">
+				<CardContent className="p-0">
 					<DataTable
 						data={plans}
 						columns={planColumns}
 						emptyMessage={t("noPlans")}
 						emptyIcon={<CreditCardIcon className="h-8 w-8" />}
+						mobileScroll
 					/>
 				</CardContent>
 			</Card>
-			<Card className="p-3 sm:p-6">
-				<CardHeader className="flex flex-row items-center justify-between p-0">
+			<Card className="flex flex-col gap-4 p-3 sm:gap-6 sm:p-6">
+				<CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 space-y-0 p-0 pb-2">
 					<CardTitle>{t("subscriptions")}</CardTitle>
-					<Button size="sm" onClick={openNewSubscription}>
+					<Button size="sm" className="w-full sm:w-auto" onClick={openNewSubscription}>
 						<PlusCircle className="mr-2 h-4 w-4" />
 						{t("addSubscription")}
 					</Button>
 				</CardHeader>
-				<CardContent className="p-0 pt-4">
+				<CardContent className="p-0">
 					<DataTable
 						data={subscriptions}
 						columns={subscriptionColumns}
@@ -537,7 +539,11 @@ export default function AdminSubscriptionsPage() {
 							</p>
 						</div>
 						<DialogFooter>
-							<Button variant="secondary" onClick={() => setIsPlanOpen(false)}>
+							<Button
+								variant="secondary"
+								type="button"
+								onClick={() => setIsPlanOpen(false)}
+							>
 								{tc("cancel")}
 							</Button>
 							<Button type="submit">{tc("save")}</Button>
@@ -590,7 +596,21 @@ export default function AdminSubscriptionsPage() {
 										<Label>{t("plan")}</Label>
 										<Select
 											value={field.state.value}
-											onValueChange={field.handleChange}
+											onValueChange={(val) => {
+												field.handleChange(val);
+												const selectedPlan = plans.find((p) => String(p.id) === val);
+												if (selectedPlan) {
+													const startStr = subscriptionForm.getFieldValue("currentPeriodStart");
+													const start = startStr ? new Date(startStr) : new Date();
+													if (selectedPlan.interval === "month") {
+														subscriptionForm.setFieldValue("currentPeriodEnd", toDateTimeInput(addDays(start, 30)));
+													} else if (selectedPlan.interval === "year") {
+														subscriptionForm.setFieldValue("currentPeriodEnd", toDateTimeInput(addDays(start, 365)));
+													} else if (selectedPlan.interval === "lifetime") {
+														subscriptionForm.setFieldValue("currentPeriodEnd", toDateTimeInput(addDays(start, 36500)));
+													}
+												}
+											}}
 										>
 											<SelectTrigger>
 												<SelectValue />
@@ -660,6 +680,7 @@ export default function AdminSubscriptionsPage() {
 						<DialogFooter>
 							<Button
 								variant="secondary"
+								type="button"
 								onClick={() => setIsSubscriptionOpen(false)}
 							>
 								{tc("cancel")}

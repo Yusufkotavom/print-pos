@@ -1,0 +1,199 @@
+--- src/app/admin/users/page.tsx
++++ src/app/admin/users/page.tsx
+@@ -29,6 +29,7 @@
+ import { useQuery } from "@tanstack/react-query";
+ import {
++	CreditCardIcon,
+ 	FilePenIcon,
+ 	PlusCircleIcon,
+ 	TrashIcon,
+@@ -43,6 +44,12 @@
+ type PlatformUser = RouterOutputs["platformAdminUsers"]["list"][number];
++const toDateTimeInput = (date: Date) => date.toISOString().slice(0, 16);
++const addDays = (date: Date, days: number) => {
++	const result = new Date(date);
++	result.setDate(result.getDate() + days);
++	return result;
++};
+ 
+ export default function AdminUsersPage() {
+ 	const trpc = useTRPC();
+@@ -50,11 +57,17 @@
+ 		data: users = [],
+ 		isLoading,
+ 		error,
+ 	} = useQuery(trpc.platformAdminUsers.list.queryOptions());
++	const { data: plans = [] } = useQuery(
++		trpc.platformSubscriptions.listPlans.queryOptions(),
++	);
+ 	const t = useTranslations("platformAdminUsers");
+ 	const tc = useTranslations("common");
++	const ts = useTranslations("platformSubscriptions");
+ 	const [isDialogOpen, setIsDialogOpen] = useState(false);
+ 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
++	const [isSubOpen, setIsSubOpen] = useState(false);
+ 	const [editingId, setEditingId] = useState<string | null>(null);
++	const [editingSubUser, setEditingSubUser] = useState<PlatformUser | null>(null);
+ 	const [deleteId, setDeleteId] = useState<string | null>(null);
+ 	const invalidateKeys = trpc.platformAdminUsers.list.queryOptions().queryKey;
+@@ -66,6 +79,13 @@
+ 		role: z.enum(["user", "admin", "super_admin"]),
+ 		status: z.enum(["active", "inactive", "suspended"]),
+ 	});
++	const subSchema = z.object({
++		planId: z.string(),
++		status: z.enum(["active", "paused", "expired", "cancelled"]),
++		currentPeriodStart: z.string().min(1),
++		currentPeriodEnd: z.string().min(1),
++	});
+ 
+ 	const createMutation = useCrudMutation({
+@@ -87,6 +107,18 @@
+ 		successMessage: t("deleted"),
+ 		errorMessage: t("deleteError"),
+ 	});
++	const createSubMutation = useCrudMutation({
++		mutationOptions: trpc.platformSubscriptions.createSubscription.mutationOptions(),
++		invalidateKeys,
++		successMessage: ts("subscriptionCreated"),
++		errorMessage: ts("subscriptionError"),
++	});
++	const updateSubMutation = useCrudMutation({
++		mutationOptions: trpc.platformSubscriptions.updateSubscription.mutationOptions(),
++		invalidateKeys,
++		successMessage: ts("subscriptionUpdated"),
++		errorMessage: ts("subscriptionError"),
++	});
+ 
+ 	const form = useForm({
+@@ -116,6 +148,27 @@
+ 		},
+ 	});
+ 
++	const subForm = useForm({
++		defaultValues: {
++			planId: "none",
++			status: "active" as any,
++			currentPeriodStart: "",
++			currentPeriodEnd: "",
++		},
++		validators: { onSubmit: subSchema },
++		onSubmit: ({ value }) => {
++			if (!editingSubUser) return;
++			const payload = {
++				userId: editingSubUser.id,
++				planId: value.planId === "none" ? null : Number(value.planId),
++				status: value.status,
++				currentPeriodStart: new Date(value.currentPeriodStart),
++				currentPeriodEnd: new Date(value.currentPeriodEnd),
++				cancelAtPeriodEnd: false,
++				cancelledAt: null,
++			};
++			if (editingSubUser.subscription) {
++				updateSubMutation.mutate({ id: editingSubUser.subscription.id, ...payload });
++			} else {
++				createSubMutation.mutate(payload);
++			}
++			setIsSubOpen(false);
++		},
++	});
++
+ 	const openCreate = () => {
+@@ -139,6 +192,23 @@
+ 		setIsDialogOpen(true);
+ 	};
+ 
++	const openSubEdit = (user: PlatformUser) => {
++		setEditingSubUser(user);
++		subForm.reset();
++		if (user.subscription) {
++			subForm.setFieldValue("planId", user.subscription.plan ? String(user.subscription.plan.id) : "none");
++			subForm.setFieldValue("status", user.subscription.status as any);
++			subForm.setFieldValue("currentPeriodStart", toDateTimeInput(new Date())); // Using now as fallback
++			subForm.setFieldValue("currentPeriodEnd", toDateTimeInput(user.subscription.currentPeriodEnd));
++		} else {
++			const now = new Date();
++			subForm.setFieldValue("planId", "none");
++			subForm.setFieldValue("status", "active");
++			subForm.setFieldValue("currentPeriodStart", toDateTimeInput(now));
++			subForm.setFieldValue("currentPeriodEnd", toDateTimeInput(addDays(now, 30)));
++		}
++		setIsSubOpen(true);
++	};
++
+ 	const columns: Column<PlatformUser>[] = [
+@@ -163,6 +233,11 @@
+ 			render: (row) => (
+ 				<TableActions>
++					<TableActionButton
++						onClick={() => openSubEdit(row)}
++						icon={<CreditCardIcon className="h-4 w-4" />}
++						label={ts("editSubscription")}
++					/>
+ 					<TableActionButton
+ 						onClick={() => openEdit(row)}
+@@ -356,6 +431,64 @@
+ 				</DialogContent>
+ 			</Dialog>
++			<Dialog open={isSubOpen} onOpenChange={setIsSubOpen}>
++				<DialogContent>
++					<DialogHeader>
++						<DialogTitle>{ts("editSubscription")}</DialogTitle>
++					</DialogHeader>
++					<form
++						onSubmit={(e) => {
++							e.preventDefault();
++							e.stopPropagation();
++							subForm.handleSubmit();
++						}}
++					>
++						<div className="grid gap-4 py-4">
++							<subForm.Field name="planId">
++								{(field) => (
++									<div className="grid gap-2">
++										<Label>{ts("plan")}</Label>
++										<Select value={field.state.value} onValueChange={field.handleChange}>
++											<SelectTrigger><SelectValue /></SelectTrigger>
++											<SelectContent>
++												<SelectItem value="none">{ts("noPlan")}</SelectItem>
++												{plans.map((p) => (
++													<SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
++												))}
++											</SelectContent>
++										</Select>
++									</div>
++								)}
++							</subForm.Field>
++							<subForm.Field name="status">
++								{(field) => (
++									<div className="grid gap-2">
++										<Label>{tc("status")}</Label>
++										<Select value={field.state.value} onValueChange={field.handleChange}>
++											<SelectTrigger><SelectValue /></SelectTrigger>
++											<SelectContent>
++												<SelectItem value="active">active</SelectItem>
++												<SelectItem value="paused">paused</SelectItem>
++												<SelectItem value="expired">expired</SelectItem>
++												<SelectItem value="cancelled">cancelled</SelectItem>
++											</SelectContent>
++										</Select>
++									</div>
++								)}
++							</subForm.Field>
++							<subForm.Field name="currentPeriodEnd">
++								{(field) => (
++									<div className="grid gap-2">
++										<Label>{ts("currentPeriodEnd")}</Label>
++										<Input type="datetime-local" value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} />
++									</div>
++								)}
++							</subForm.Field>
++						</div>
++						<DialogFooter>
++							<Button variant="secondary" type="button" onClick={() => setIsSubOpen(false)}>{tc("cancel")}</Button>
++							<Button type="submit">{tc("save")}</Button>
++						</DialogFooter>
++					</form>
++				</DialogContent>
++			</Dialog>
+ 			<DeleteConfirmationDialog
