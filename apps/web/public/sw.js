@@ -8,6 +8,7 @@ const APP_SHELL = [
 	"/admin/customers",
 	"/admin/payment-methods",
 	"/admin/services",
+	"/admin/orders",
 	"/offline",
 	"/manifest.webmanifest",
 	"/icons/icon.svg",
@@ -45,25 +46,51 @@ self.addEventListener("fetch", (event) => {
 	const url = new URL(request.url);
 	if (url.pathname.startsWith("/api/")) return;
 	if (url.pathname.startsWith("/trpc/")) return;
-	if (request.mode === "navigate") {
-		event.respondWith(handleNavigation(request, url));
-		return;
-	}
-	event.respondWith(
-		caches.match(request).then((cached) => {
-			if (cached) return cached;
-			return fetch(request)
-				.then((response) => {
-					if (response.ok && shouldCacheAsset(url.pathname)) {
+
+	const isStaticAsset = shouldCacheAsset(url.pathname);
+	const isRSC = url.searchParams.has("_rsc");
+	const isAdminRoute = url.pathname.startsWith("/admin");
+
+	if (isStaticAsset && !isRSC) {
+		// Cache First, fallback to Network for static assets
+		event.respondWith(
+			caches.match(request).then((cached) => {
+				if (cached) return cached;
+				return fetch(request).then((response) => {
+					if (response.ok) {
 						const clone = response.clone();
-						void caches
-							.open(CACHE_NAME)
-							.then((cache) => cache.put(request, clone));
+						caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
 					}
 					return response;
-				})
-				.catch(() => Response.error());
-		}),
+				}).catch(() => Response.error());
+			})
+		);
+		return;
+	}
+
+	// Network First, fallback to Cache for HTML navigations and Next.js RSC requests
+	event.respondWith(
+		fetch(request)
+			.then((response) => {
+				if (response.ok && (isAdminRoute || isRSC || url.pathname === "/")) {
+					const clone = response.clone();
+					caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+				}
+				return response;
+			})
+			.catch(async () => {
+				const cached = await caches.match(request);
+				if (cached) return cached;
+
+				if (request.mode === "navigate") {
+					if (isAdminRoute) {
+						const adminShell = await caches.match(ADMIN_SHELL);
+						if (adminShell) return adminShell;
+					}
+					return (await caches.match(OFFLINE_FALLBACK)) ?? Response.error();
+				}
+				return Response.error();
+			})
 	);
 });
 
@@ -99,24 +126,7 @@ function shouldCacheAsset(pathname) {
 	);
 }
 
-async function handleNavigation(request, url) {
-	try {
-		const response = await fetch(request);
-		if (response.ok) {
-			const cache = await caches.open(CACHE_NAME);
-			await cache.put(request, response.clone());
-		}
-		return response;
-	} catch {
-		const cached = await caches.match(request);
-		if (cached) return cached;
-		if (url.pathname === ADMIN_SHELL || url.pathname.startsWith("/admin/")) {
-			const adminShell = await caches.match(ADMIN_SHELL);
-			if (adminShell) return adminShell;
-		}
-		return (await caches.match(OFFLINE_FALLBACK)) ?? Response.error();
-	}
-}
+// handleNavigation removed in favor of inline logic in fetch handler
 
 async function broadcastSyncRequest() {
 	const clientsList = await self.clients.matchAll({
