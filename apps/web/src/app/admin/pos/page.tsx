@@ -169,6 +169,18 @@ export default function POSPage() {
 	const [orderNote, setOrderNote] = useState("");
 	const [isCartOpen, setIsCartOpen] = useState(false);
 	const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false);
+	const createQueuedOrder = useCallback(
+		(payload: {
+			clientOrderId?: string;
+			customerId: number;
+			products: { id: number; quantity: number; price: number }[];
+			note: string;
+			paymentMethodId: number;
+			paidAmount: number;
+			total: number;
+		}) => createOrderMutation.mutateAsync(payload),
+		[createOrderMutation],
+	);
 	const {
 		products,
 		customers,
@@ -187,17 +199,7 @@ export default function POSPage() {
 		remotePaymentMethods,
 		isRemoteLoading: loadingProducts || loadingCustomers || loadingMethods,
 		isRemoteError: !!productsError || !!customersError || !!paymentMethodsError,
-		createOrder: async (payload: {
-			clientOrderId?: string;
-			customerId: number;
-			products: { id: number; quantity: number; price: number }[];
-			note: string;
-			paymentMethodId: number;
-			paidAmount: number;
-			total: number;
-		}) => {
-			await createOrderMutation.mutateAsync(payload);
-		},
+		createOrder: createQueuedOrder,
 	});
 	const loading =
 		(loadingProducts && products.length === 0) ||

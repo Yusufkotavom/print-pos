@@ -236,7 +236,7 @@ export default function OrderDetailPage({
 		);
 	};
 
-	if (isLoading) {
+	if (isLoading && !order) {
 		return (
 			<div className="max-w-3xl space-y-6">
 				<Skeleton className="h-8 w-48" />

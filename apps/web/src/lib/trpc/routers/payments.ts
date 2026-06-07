@@ -48,12 +48,18 @@ async function recalculateOrderPayment(tx: PaymentDb, orderId: number) {
 			: paidAmount > 0
 				? "partial"
 				: "unpaid";
+	const nextStatus =
+		order.status === "cancelled"
+			? "cancelled"
+			: paymentStatus === "paid"
+				? "completed"
+				: "pending";
 	const [updated] = await tx
 		.update(orders)
 		.set({
 			paid_amount: paidAmount,
 			payment_status: paymentStatus,
-			status: paymentStatus === "paid" ? "completed" : "pending",
+			status: nextStatus,
 		})
 		.where(eq(orders.id, orderId))
 		.returning();

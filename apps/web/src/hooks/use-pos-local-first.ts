@@ -36,7 +36,9 @@ export function usePOSLocalFirst<
 	remoteProducts: TProduct[];
 	remoteCustomers: TCustomer[];
 	remotePaymentMethods: TPaymentMethod[];
-	createOrder: (payload: TCreatePayload) => Promise<void>;
+	createOrder: (
+		payload: TCreatePayload,
+	) => Promise<{ id?: number } | undefined>;
 	isRemoteLoading?: boolean;
 	isRemoteError?: boolean;
 }) {
@@ -135,10 +137,7 @@ export function usePOSLocalFirst<
 	const syncQueuedOrders = useCallback(async () => {
 		await syncReadyQueue(
 			{
-				createOrder: async (payload) => {
-					await createOrder(payload as TCreatePayload);
-					return undefined;
-				},
+				createOrder: (payload) => createOrder(payload as TCreatePayload),
 			},
 			{ entities: ["order"] },
 		);

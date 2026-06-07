@@ -149,14 +149,16 @@ export default function NewServicePage() {
 	}, []);
 
 	useEffect(() => {
+		if (productsLoading || productsError) return;
 		setCachedProducts(remoteProducts);
 		void replaceCachedProducts(remoteProducts);
-	}, [remoteProducts]);
+	}, [remoteProducts, productsLoading, productsError]);
 
 	useEffect(() => {
+		if (customersLoading || customersError) return;
 		setCachedCustomers(remoteCustomers);
 		void replaceCachedCustomers(remoteCustomers);
-	}, [remoteCustomers]);
+	}, [remoteCustomers, customersLoading, customersError]);
 
 	useEffect(() => {
 		void saveDraft(SERVICE_DRAFT_KEY, {

@@ -16,16 +16,28 @@ import {
 	TableHeader,
 	TableRow,
 } from "@finopenpos/ui/components/table";
-import { useMutation } from "@tanstack/react-query";
-import { RefreshCwIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+	DownloadIcon,
+	RefreshCwIcon,
+	RotateCcwIcon,
+	Trash2Icon,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { localDb, type SyncQueueItem } from "@/lib/local-db/db";
+import {
+	type OfflineWarmupSummary,
+	readLastOfflineWarmupSummary,
+	warmupOfflineCache,
+} from "@/lib/local-db/offline-warmup";
+import { createOfflineWarmupQueries } from "@/lib/local-db/offline-warmup-queries";
 import {
 	listSyncQueue,
 	removeSyncQueueItem,
 	updateSyncQueueItem,
 } from "@/lib/local-db/repo";
 import { syncReadyQueue } from "@/lib/local-db/sync-engine";
+import { createQueuedSyncHandlers } from "@/lib/local-db/sync-handlers";
 import { useTRPC } from "@/lib/trpc/client";
 
 type SyncSnapshot = {
@@ -60,10 +72,14 @@ const emptySnapshot: SyncSnapshot = {
 
 export default function SyncPage() {
 	const trpc = useTRPC();
+	const queryClient = useQueryClient();
 	const [snapshot, setSnapshot] = useState<SyncSnapshot>(emptySnapshot);
 	const [isOnline, setIsOnline] = useState(true);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSyncing, setIsSyncing] = useState(false);
+	const [isWarmingUp, setIsWarmingUp] = useState(false);
+	const [warmupSummary, setWarmupSummary] =
+		useState<OfflineWarmupSummary | null>(null);
 	const createOrderMutation = useMutation(trpc.orders.create.mutationOptions());
 	const updateOrderMutation = useMutation(trpc.orders.update.mutationOptions());
 	const receiveOrderPaymentMutation = useMutation(
@@ -186,6 +202,7 @@ export default function SyncPage() {
 			drafts,
 			meta,
 		});
+		setWarmupSummary(await readLastOfflineWarmupSummary());
 		setIsLoading(false);
 	}, []);
 
@@ -251,87 +268,67 @@ export default function SyncPage() {
 		await refresh();
 	};
 
+	const runWarmup = async () => {
+		setIsWarmingUp(true);
+		const summary = await warmupOfflineCache({
+			queryClient,
+			queries: createOfflineWarmupQueries(trpc as never),
+		});
+		setWarmupSummary(summary);
+		setIsWarmingUp(false);
+		await refresh();
+	};
+
 	const runSync = async () => {
 		setIsSyncing(true);
-		await syncReadyQueue({
-			createOrder: (payload) =>
-				createOrderMutation.mutateAsync(payload as never) as Promise<{
-					id?: number;
-				}>,
-			updateOrder: (payload) =>
-				updateOrderMutation.mutateAsync(payload as never),
-			receiveOrderPayment: (payload) =>
-				receiveOrderPaymentMutation.mutateAsync(payload as never),
-			deleteOrder: (payload) =>
-				deleteOrderMutation.mutateAsync(payload as never),
-			createServiceOrder: (payload) =>
-				createServiceOrderMutation.mutateAsync(payload as never) as Promise<{
-					id?: number;
-				}>,
-			updateServiceOrder: (payload) =>
-				updateServiceOrderMutation.mutateAsync(payload as never),
-			updateServiceOrderStatus: (payload) =>
-				updateServiceOrderStatusMutation.mutateAsync(payload as never),
-			receiveServiceOrderPayment: (payload) =>
-				receiveServiceOrderPaymentMutation.mutateAsync(payload as never),
-			updateServiceOrderWarranty: (payload) =>
-				updateServiceOrderWarrantyMutation.mutateAsync(payload as never),
-			deleteServiceOrder: (payload) =>
-				deleteServiceOrderMutation.mutateAsync(payload as never),
-			createProduct: (payload) =>
-				createProductMutation.mutateAsync(payload as never) as Promise<{
-					id?: number;
-				}>,
-			updateProduct: (payload) =>
-				updateProductMutation.mutateAsync(payload as never),
-			deleteProduct: (payload) =>
-				deleteProductMutation.mutateAsync(payload as never),
-			createProductCategory: (payload) =>
-				createProductCategoryMutation.mutateAsync(payload as never) as Promise<{
-					id?: number;
-				}>,
-			updateProductCategory: (payload) =>
-				updateProductCategoryMutation.mutateAsync(payload as never),
-			deleteProductCategory: (payload) =>
-				deleteProductCategoryMutation.mutateAsync(payload as never),
-			createPaymentMethod: (payload) =>
-				createPaymentMethodMutation.mutateAsync(payload as never) as Promise<{
-					id?: number;
-				}>,
-			updatePaymentMethod: (payload) =>
-				updatePaymentMethodMutation.mutateAsync(payload as never),
-			deletePaymentMethod: (payload) =>
-				deletePaymentMethodMutation.mutateAsync(payload as never),
-			createCustomer: (payload) =>
-				createCustomerMutation.mutateAsync(payload as never) as Promise<{
-					id?: number;
-				}>,
-			updateCustomer: (payload) =>
-				updateCustomerMutation.mutateAsync(payload as never),
-			deleteCustomer: (payload) =>
-				deleteCustomerMutation.mutateAsync(payload as never),
-			createTransaction: (payload) =>
-				createTransactionMutation.mutateAsync(payload as never) as Promise<{
-					id?: number;
-				}>,
-			updateTransaction: (payload) =>
-				updateTransactionMutation.mutateAsync(payload as never),
-			deleteTransaction: (payload) =>
-				deleteTransactionMutation.mutateAsync(payload as never),
-			createTransactionCategory: (payload) =>
-				createTransactionCategoryMutation.mutateAsync(
-					payload as never,
-				) as Promise<{
-					id?: number;
-				}>,
-			updateTransactionCategory: (payload) =>
-				updateTransactionCategoryMutation.mutateAsync(payload as never),
-			deleteTransactionCategory: (payload) =>
-				deleteTransactionCategoryMutation.mutateAsync(payload as never),
-			updateProductImage: async (payload) => {
-				await updateProductMutation.mutateAsync(payload);
-			},
-		});
+		await syncReadyQueue(
+			createQueuedSyncHandlers({
+				orders: {
+					create: createOrderMutation,
+					update: updateOrderMutation,
+					receivePayment: receiveOrderPaymentMutation,
+					delete: deleteOrderMutation,
+				},
+				serviceOrders: {
+					create: createServiceOrderMutation,
+					update: updateServiceOrderMutation,
+					updateStatus: updateServiceOrderStatusMutation,
+					receivePayment: receiveServiceOrderPaymentMutation,
+					updateWarranty: updateServiceOrderWarrantyMutation,
+					delete: deleteServiceOrderMutation,
+				},
+				products: {
+					create: createProductMutation,
+					update: updateProductMutation,
+					delete: deleteProductMutation,
+				},
+				productCategories: {
+					create: createProductCategoryMutation,
+					update: updateProductCategoryMutation,
+					delete: deleteProductCategoryMutation,
+				},
+				paymentMethods: {
+					create: createPaymentMethodMutation,
+					update: updatePaymentMethodMutation,
+					delete: deletePaymentMethodMutation,
+				},
+				customers: {
+					create: createCustomerMutation,
+					update: updateCustomerMutation,
+					delete: deleteCustomerMutation,
+				},
+				transactions: {
+					create: createTransactionMutation,
+					update: updateTransactionMutation,
+					delete: deleteTransactionMutation,
+				},
+				transactionCategories: {
+					create: createTransactionCategoryMutation,
+					update: updateTransactionCategoryMutation,
+					delete: deleteTransactionCategoryMutation,
+				},
+			}),
+		);
 		setIsSyncing(false);
 		await refresh();
 	};
@@ -357,6 +354,15 @@ export default function SyncPage() {
 					>
 						<RotateCcwIcon className="mr-2 h-4 w-4" />
 						{isSyncing ? "Syncing..." : "Sync now"}
+					</Button>
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() => void runWarmup()}
+						disabled={!isOnline || isWarmingUp}
+					>
+						<DownloadIcon className="mr-2 h-4 w-4" />
+						{isWarmingUp ? "Warming up..." : "Prepare offline mode"}
 					</Button>
 					<Button
 						type="button"
@@ -387,6 +393,30 @@ export default function SyncPage() {
 					detail="Needs manual fix"
 				/>
 			</div>
+
+			<Card>
+				<CardHeader>
+					<CardTitle>Offline Warmup</CardTitle>
+				</CardHeader>
+				<CardContent className="space-y-2 text-sm">
+					<div>
+						Last run:{" "}
+						{warmupSummary?.finishedAt
+							? new Date(warmupSummary.finishedAt).toLocaleString()
+							: "—"}
+					</div>
+					<div>Routes warmed: {warmupSummary?.routesWarmed.length ?? 0}</div>
+					<div>
+						Detail routes warmed:{" "}
+						{warmupSummary?.detailRoutesWarmed.length ?? 0}
+					</div>
+					<div>
+						Datasets warmed:{" "}
+						{Object.keys(warmupSummary?.datasetsWarmed ?? {}).length}
+					</div>
+					<div>Failures: {warmupSummary?.failures.length ?? 0}</div>
+				</CardContent>
+			</Card>
 
 			<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
 				<MetricCard title="Cached products" value={snapshot.products} />
