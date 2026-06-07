@@ -275,10 +275,12 @@ export default function OrderDetailPage({
 				? t("partial")
 				: t("unpaid");
 	const orderNumber = order.order_number ?? `#${order.id}`;
+	const orderItems = order.orderItems ?? [];
+	const orderPayments = order.payments ?? [];
 	const whatsappMessage = [
 		`${t("invoice")} ${orderNumber}`,
 		order.customer?.name ? `${t("customer")}: ${order.customer.name}` : null,
-		...order.orderItems.map(
+		...orderItems.map(
 			(item) =>
 				`- ${item.item_name || item.product?.name || `#${item.product_id}`} x${item.quantity} (${formatCurrency(item.price * item.quantity, locale)})`,
 		),
@@ -310,7 +312,7 @@ export default function OrderDetailPage({
 				payment_status: nextPaymentStatus,
 				status: nextPaymentStatus === "paid" ? "completed" : order.status,
 				payments: [
-					...order.payments,
+					...orderPayments,
 					{
 						id: -Date.now(),
 						payment_number: null,
@@ -350,7 +352,7 @@ export default function OrderDetailPage({
 
 	const handleOpenEdit = () => {
 		setEditItems(
-			order.orderItems.map((item) => {
+			orderItems.map((item) => {
 				const product = item.product_id
 					? products.find((entry) => entry.id === item.product_id)
 					: undefined;
@@ -526,7 +528,7 @@ export default function OrderDetailPage({
 					<CardTitle>Riwayat Pembayaran</CardTitle>
 				</CardHeader>
 				<CardContent>
-					{order.payments.length === 0 ? (
+					{orderPayments.length === 0 ? (
 						<div className="text-muted-foreground text-sm">
 							Belum ada pembayaran.
 						</div>
@@ -542,7 +544,7 @@ export default function OrderDetailPage({
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{order.payments.map((payment) => (
+								{orderPayments.map((payment) => (
 									<TableRow key={payment.id}>
 										<TableCell>
 											{payment.payment_number ?? `#${payment.id}`}
@@ -565,7 +567,7 @@ export default function OrderDetailPage({
 				</CardContent>
 			</Card>
 
-			{order.orderItems.length > 0 && (
+			{orderItems.length > 0 && (
 				<Card>
 					<CardHeader>
 						<CardTitle>{t("items")}</CardTitle>
@@ -585,7 +587,7 @@ export default function OrderDetailPage({
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{order.orderItems.map((item) => (
+									{orderItems.map((item) => (
 										<TableRow key={item.id}>
 											<TableCell className="font-medium">
 												<div>
