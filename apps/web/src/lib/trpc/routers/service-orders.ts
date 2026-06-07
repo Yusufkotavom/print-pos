@@ -4,12 +4,14 @@ import { db } from "@/lib/db";
 import {
 	customers,
 	paymentMethods,
+	payments,
 	products,
 	serviceOrderItems,
 	serviceOrders,
 	transactions,
 } from "@/lib/db/schema";
 import { protectedProcedure, router } from "../init";
+import { recalculateServicePayment } from "./payments";
 
 function formatSequenceNumber(prefix: string, id: number) {
 	const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
@@ -62,6 +64,17 @@ const serviceOrderDetailSchema = serviceOrderSummarySchema.extend({
 			note: z.string().nullable(),
 		}),
 	),
+	payments: z.array(
+		z.object({
+			id: z.number(),
+			payment_number: z.string().nullable(),
+			amount: z.number(),
+			type: z.string(),
+			status: z.string(),
+			paid_at: z.date().nullable(),
+			paymentMethod: z.object({ name: z.string() }).nullable(),
+		}),
+	),
 	transactions: z.array(
 		z.object({
 			id: z.number(),
@@ -95,6 +108,17 @@ export const serviceOrdersRouter = router({
 				with: {
 					customer: { columns: { name: true, phone: true } },
 					items: true,
+					payments: {
+						columns: {
+							id: true,
+							payment_number: true,
+							amount: true,
+							type: true,
+							status: true,
+							paid_at: true,
+						},
+						with: { paymentMethod: { columns: { name: true } } },
+					},
 					transactions: {
 						columns: { id: true, amount: true, created_at: true },
 						with: { paymentMethod: { columns: { name: true } } },
@@ -268,14 +292,23 @@ export const serviceOrdersRouter = router({
 					),
 				});
 				if (!method) throw new Error("Payment method not found");
-
-				const paidAmount = serviceOrder.paid_amount + input.amount;
-				const paymentStatus =
-					paidAmount >= serviceOrder.total_amount
-						? "paid"
-						: paidAmount > 0
-							? "partial"
-							: "unpaid";
+				const [createdPayment] = await tx
+					.insert(payments)
+					.values({
+						service_order_id: serviceOrder.id,
+						payment_method_id: input.paymentMethodId,
+						amount: input.amount,
+						type: "payment",
+						status: "completed",
+						user_uid: ctx.user.id,
+					})
+					.returning();
+				await tx
+					.update(payments)
+					.set({
+						payment_number: formatSequenceNumber("PAY", createdPayment.id),
+					})
+					.where(eq(payments.id, createdPayment.id));
 				const [transaction] = await tx
 					.insert(transactions)
 					.values({
@@ -295,12 +328,15 @@ export const serviceOrdersRouter = router({
 						transaction_number: formatSequenceNumber("TRX", transaction.id),
 					})
 					.where(eq(transactions.id, transaction.id));
-
+				const paymentUpdated = await recalculateServicePayment(
+					tx,
+					serviceOrder.id,
+				);
 				const [updated] = await tx
 					.update(serviceOrders)
 					.set({
-						paid_amount: paidAmount,
-						payment_status: paymentStatus,
+						paid_amount: paymentUpdated.paid_amount,
+						payment_status: paymentUpdated.payment_status,
 						warranty_unit: input.warrantyUnit,
 						warranty_value:
 							input.warrantyUnit === "none"

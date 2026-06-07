@@ -5,10 +5,12 @@ import {
 	customers,
 	orderItems,
 	orders,
+	payments,
 	products,
 	transactions,
 } from "@/lib/db/schema";
 import { protectedProcedure, router } from "../init";
+import { recalculateOrderPayment } from "./payments";
 
 function formatSequenceNumber(prefix: string, id: number) {
 	const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
@@ -41,6 +43,17 @@ const orderDetailSchema = z.object({
 	paid_amount: z.number(),
 	payment_status: z.string(),
 	customer: z.object({ name: z.string() }).nullable(),
+	payments: z.array(
+		z.object({
+			id: z.number(),
+			payment_number: z.string().nullable(),
+			amount: z.number(),
+			type: z.string(),
+			status: z.string(),
+			paid_at: z.date().nullable(),
+			paymentMethod: z.object({ name: z.string() }).nullable(),
+		}),
+	),
 	orderItems: z.array(
 		z.object({
 			id: z.number(),
@@ -79,6 +92,17 @@ export const ordersRouter = router({
 				where: and(eq(orders.id, input.id), eq(orders.user_uid, ctx.user.id)),
 				with: {
 					customer: { columns: { name: true } },
+					payments: {
+						columns: {
+							id: true,
+							payment_number: true,
+							amount: true,
+							type: true,
+							status: true,
+							paid_at: true,
+						},
+						with: { paymentMethod: { columns: { name: true } } },
+					},
 					orderItems: {
 						with: {
 							product: {
@@ -234,6 +258,23 @@ export const ordersRouter = router({
 				await tx.insert(orderItems).values(itemValues);
 
 				if (paidAmount > 0) {
+					const [createdPayment] = await tx
+						.insert(payments)
+						.values({
+							order_id: orderData.id,
+							payment_method_id: paymentMethodId,
+							amount: paidAmount,
+							type: "payment",
+							status: "completed",
+							user_uid: ctx.user.id,
+						})
+						.returning();
+					await tx
+						.update(payments)
+						.set({
+							payment_number: formatSequenceNumber("PAY", createdPayment.id),
+						})
+						.where(eq(payments.id, createdPayment.id));
 					const [createdTransaction] = await tx
 						.insert(transactions)
 						.values({
@@ -328,37 +369,34 @@ export const ordersRouter = router({
 					.from(orders)
 					.where(and(eq(orders.id, input.id), eq(orders.user_uid, ctx.user.id)))
 					.limit(1);
-
 				if (!order) throw new Error("Order not found");
 				const remainingAmount = order.total_amount - order.paid_amount;
 				if (remainingAmount <= 0) throw new Error("Order is already paid");
-
-				const nextPaidAmount =
-					order.paid_amount + Math.min(input.amount, remainingAmount);
-				const paymentStatus =
-					nextPaidAmount >= order.total_amount
-						? "paid"
-						: nextPaidAmount > 0
-							? "partial"
-							: "unpaid";
-				const status = paymentStatus === "paid" ? "completed" : "pending";
-
-				const [updated] = await tx
-					.update(orders)
-					.set({
-						paid_amount: nextPaidAmount,
-						payment_status: paymentStatus,
-						status,
+				const amount = Math.min(input.amount, remainingAmount);
+				const [createdPayment] = await tx
+					.insert(payments)
+					.values({
+						order_id: input.id,
+						payment_method_id: input.paymentMethodId,
+						amount,
+						type: "payment",
+						status: "completed",
+						user_uid: ctx.user.id,
 					})
-					.where(and(eq(orders.id, input.id), eq(orders.user_uid, ctx.user.id)))
 					.returning();
-
+				await tx
+					.update(payments)
+					.set({
+						payment_number: formatSequenceNumber("PAY", createdPayment.id),
+					})
+					.where(eq(payments.id, createdPayment.id));
+				const updated = await recalculateOrderPayment(tx, input.id);
 				const [createdTransaction] = await tx
 					.insert(transactions)
 					.values({
 						order_id: input.id,
 						payment_method_id: input.paymentMethodId,
-						amount: nextPaidAmount - order.paid_amount,
+						amount,
 						user_uid: ctx.user.id,
 						status: "completed",
 						category: "selling",
@@ -375,14 +413,12 @@ export const ordersRouter = router({
 						),
 					})
 					.where(eq(transactions.id, createdTransaction.id));
-
 				const customer = updated.customer_id
 					? await tx.query.customers.findFirst({
 							where: eq(customers.id, updated.customer_id),
 							columns: { name: true },
 						})
 					: null;
-
 				return { ...updated, customer: customer ?? null };
 			});
 		}),

@@ -163,6 +163,25 @@ export const paymentMethods = pgTable("payment_methods", {
 	created_at: timestamp("created_at").defaultNow(),
 });
 
+export const payments = pgTable("payments", {
+	id: serial("id").primaryKey(),
+	payment_number: varchar("payment_number", { length: 32 }),
+	order_id: integer("order_id").references(() => orders.id),
+	service_order_id: integer("service_order_id").references(
+		() => serviceOrders.id,
+	),
+	payment_method_id: integer("payment_method_id").references(
+		() => paymentMethods.id,
+	),
+	amount: integer("amount").notNull(),
+	type: varchar("type", { length: 20 }).notNull().default("payment"),
+	status: varchar("status", { length: 20 }).notNull().default("completed"),
+	notes: text("notes"),
+	paid_at: timestamp("paid_at").defaultNow(),
+	user_uid: varchar("user_uid", { length: 255 }).notNull(),
+	created_at: timestamp("created_at").defaultNow(),
+});
+
 export const transactions = pgTable("transactions", {
 	id: serial("id").primaryKey(),
 	transaction_number: varchar("transaction_number", { length: 32 }),
@@ -250,6 +269,7 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
 		references: [customers.id],
 	}),
 	orderItems: many(orderItems),
+	payments: many(payments),
 }));
 
 export const orderItemsRelations = relations(orderItems, ({ one }) => ({
@@ -271,6 +291,7 @@ export const serviceOrdersRelations = relations(
 			references: [customers.id],
 		}),
 		items: many(serviceOrderItems),
+		payments: many(payments),
 		transactions: many(transactions),
 	}),
 );
@@ -314,9 +335,25 @@ export const productsRelations = relations(products, ({ many }) => ({
 	serviceOrderItems: many(serviceOrderItems),
 }));
 
+export const paymentsRelations = relations(payments, ({ one }) => ({
+	order: one(orders, {
+		fields: [payments.order_id],
+		references: [orders.id],
+	}),
+	serviceOrder: one(serviceOrders, {
+		fields: [payments.service_order_id],
+		references: [serviceOrders.id],
+	}),
+	paymentMethod: one(paymentMethods, {
+		fields: [payments.payment_method_id],
+		references: [paymentMethods.id],
+	}),
+}));
+
 export const paymentMethodsRelations = relations(
 	paymentMethods,
 	({ many }) => ({
+		payments: many(payments),
 		transactions: many(transactions),
 	}),
 );

@@ -258,6 +258,50 @@ export default function ServiceDetailPage({
 
 			<Card>
 				<CardHeader>
+					<CardTitle>Riwayat Pembayaran</CardTitle>
+				</CardHeader>
+				<CardContent>
+					{service.payments.length === 0 ? (
+						<div className="text-muted-foreground text-sm">
+							Belum ada pembayaran.
+						</div>
+					) : (
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>No</TableHead>
+									<TableHead>Metode</TableHead>
+									<TableHead>Tipe</TableHead>
+									<TableHead>Jumlah</TableHead>
+									<TableHead>Tanggal</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{service.payments.map((payment) => (
+									<TableRow key={payment.id}>
+										<TableCell>
+											{payment.payment_number ?? `#${payment.id}`}
+										</TableCell>
+										<TableCell>{payment.paymentMethod?.name ?? "—"}</TableCell>
+										<TableCell>{payment.type}</TableCell>
+										<TableCell>
+											{formatCurrency(payment.amount, locale)}
+										</TableCell>
+										<TableCell>
+											{payment.paid_at
+												? new Date(payment.paid_at).toLocaleString(locale)
+												: "—"}
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					)}
+				</CardContent>
+			</Card>
+
+			<Card>
+				<CardHeader>
 					<CardTitle>{t("updateStatus")}</CardTitle>
 				</CardHeader>
 				<CardContent className="flex flex-wrap gap-2">
