@@ -34,24 +34,51 @@ import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
 import { FilePenIcon, PlusCircle, TrashIcon, UsersIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { z } from "zod/v4";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import {
+	enqueueSyncItem,
+	readCachedCustomers,
+	removeCachedCustomer,
+	replaceCachedCustomers,
+	upsertCachedCustomer,
+} from "@/lib/local-db/repo";
+import { syncReadyQueue } from "@/lib/local-db/sync-engine";
 import { useTRPC } from "@/lib/trpc/client";
-import type { RouterOutputs } from "@/lib/trpc/router";
+import type { RouterInputs, RouterOutputs } from "@/lib/trpc/router";
 
 type Customer = RouterOutputs["customers"]["list"][number];
+type CustomerCreateInput = RouterInputs["customers"]["create"];
+type CustomerUpdateInput = RouterInputs["customers"]["update"];
 
 export default function CustomersPage() {
 	const trpc = useTRPC();
 	const {
-		data: customers = [],
+		data: remoteCustomers = [],
 		isLoading,
 		error,
 	} = useQuery(trpc.customers.list.queryOptions());
+	const [cachedCustomers, setCachedCustomers] = useState<Customer[]>([]);
+	const hasCachedCustomers = cachedCustomers.length > 0;
+	const customers =
+		(isLoading || error) && hasCachedCustomers
+			? cachedCustomers
+			: remoteCustomers;
 	const t = useTranslations("customers");
 	const tc = useTranslations("common");
+	const isOnline = useOnlineStatus();
+
+	useEffect(() => {
+		void readCachedCustomers<Customer>().then(setCachedCustomers);
+	}, []);
+
+	useEffect(() => {
+		setCachedCustomers(remoteCustomers);
+		void replaceCachedCustomers(remoteCustomers);
+	}, [remoteCustomers]);
 
 	const customerFormSchema = z.object({
 		name: z.string().min(1, t("nameRequired")),
@@ -118,6 +145,22 @@ export default function CustomersPage() {
 
 	const isEditing = editingId !== null;
 	const invalidateKeys = trpc.customers.list.queryOptions().queryKey;
+	const buildOptimisticCustomer = (
+		id: number,
+		payload: CustomerCreateInput | CustomerUpdateInput,
+	) => {
+		const current = customers.find((item) => item.id === id);
+		return {
+			id,
+			name: payload.name ?? current?.name ?? "",
+			email: payload.email ?? current?.email ?? null,
+			phone: payload.phone ?? current?.phone ?? "",
+			address: payload.address ?? current?.address ?? null,
+			status: payload.status ?? current?.status ?? "active",
+			user_uid: current?.user_uid ?? "local",
+			created_at: current?.created_at ?? new Date(),
+		} satisfies Customer;
+	};
 
 	const createMutation = useCrudMutation({
 		mutationOptions: trpc.customers.create.mutationOptions(),
@@ -142,6 +185,18 @@ export default function CustomersPage() {
 		errorMessage: t("deleteError"),
 	});
 
+	useEffect(() => {
+		if (!isOnline) return;
+		void syncReadyQueue({
+			createCustomer: (payload) =>
+				createMutation.mutateAsync(payload as CustomerCreateInput),
+			updateCustomer: (payload) =>
+				updateMutation.mutateAsync(payload as CustomerUpdateInput),
+			deleteCustomer: (payload) =>
+				deleteMutation.mutateAsync(payload as { id: number }),
+		});
+	}, [createMutation, deleteMutation, isOnline, updateMutation]);
+
 	const form = useForm({
 		defaultValues: {
 			name: "",
@@ -153,7 +208,7 @@ export default function CustomersPage() {
 		validators: {
 			onSubmit: customerFormSchema,
 		},
-		onSubmit: ({ value }) => {
+		onSubmit: async ({ value }) => {
 			const payload = {
 				name: value.name,
 				email: value.email || undefined,
@@ -161,6 +216,48 @@ export default function CustomersPage() {
 				address: value.address || undefined,
 				status: value.status,
 			};
+			if (!isOnline) {
+				if (isEditing) {
+					const nextCustomer = buildOptimisticCustomer(editingId, {
+						id: editingId,
+						...payload,
+					});
+					await upsertCachedCustomer(nextCustomer);
+					setCachedCustomers((current) => {
+						const filtered = current.filter((item) => item.id !== editingId);
+						return [...filtered, nextCustomer].sort((a, b) =>
+							a.name.localeCompare(b.name),
+						);
+					});
+					await enqueueSyncItem({
+						id: `customer:update:${editingId}`,
+						entity: "customer",
+						operation: "update",
+						payload: { id: editingId, ...payload },
+						status: "pending",
+						retryCount: 0,
+					});
+				} else {
+					const localId = -Date.now();
+					const nextCustomer = buildOptimisticCustomer(localId, payload);
+					await upsertCachedCustomer(nextCustomer);
+					setCachedCustomers((current) =>
+						[...current, nextCustomer].sort((a, b) =>
+							a.name.localeCompare(b.name),
+						),
+					);
+					await enqueueSyncItem({
+						id: `customer:create:${localId}`,
+						entity: "customer",
+						operation: "create",
+						payload: { localId, ...payload },
+						status: "pending",
+						retryCount: 0,
+					});
+				}
+				setIsDialogOpen(false);
+				return;
+			}
 			if (isEditing) {
 				updateMutation.mutate({ id: editingId, ...payload });
 			} else {
@@ -204,7 +301,22 @@ export default function CustomersPage() {
 
 	const handleDelete = () => {
 		if (deleteId !== null) {
-			deleteMutation.mutate({ id: deleteId });
+			if (!isOnline) {
+				void removeCachedCustomer(deleteId);
+				setCachedCustomers((current) =>
+					current.filter((item) => item.id !== deleteId),
+				);
+				void enqueueSyncItem({
+					id: `customer:delete:${deleteId}`,
+					entity: "customer",
+					operation: "delete",
+					payload: { id: deleteId },
+					status: "pending",
+					retryCount: 0,
+				});
+			} else {
+				deleteMutation.mutate({ id: deleteId });
+			}
 			setIsDeleteOpen(false);
 			setDeleteId(null);
 		}
@@ -233,7 +345,7 @@ export default function CustomersPage() {
 		),
 	};
 
-	if (isLoading) {
+	if (isLoading && !hasCachedCustomers) {
 		return (
 			<Card className="flex flex-col gap-6 p-6">
 				<CardHeader className="p-0">
@@ -257,7 +369,7 @@ export default function CustomersPage() {
 		);
 	}
 
-	if (error) {
+	if (error && customers.length === 0) {
 		return (
 			<Card>
 				<CardContent>
@@ -268,194 +380,201 @@ export default function CustomersPage() {
 	}
 
 	return (
-		<Card className="flex flex-col gap-4 p-3 sm:gap-6 sm:p-6">
-			<CardHeader className="p-0">
-				<SearchFilter
-					search={searchTerm}
-					onSearchChange={setSearchTerm}
-					searchPlaceholder={t("searchPlaceholder")}
-					filters={[
-						{
-							options: statusFilterOptions,
-							value: statusFilter,
-							onChange: setStatusFilter,
-						},
-					]}
-				>
-					<Button size="sm" onClick={openCreate}>
-						<PlusCircle className="mr-2 h-4 w-4" />
-						{t("addCustomer")}
-					</Button>
-				</SearchFilter>
-			</CardHeader>
-			<CardContent className="p-0">
-				<DataTable
-					data={filteredCustomers}
-					columns={[...tableColumns, actionsColumn]}
-					mobileScroll
-					exportColumns={exportColumns}
-					exportFilename="customers"
-					emptyMessage={t("noCustomers")}
-					emptyIcon={<UsersIcon className="h-8 w-8" />}
-					defaultSort={[{ id: "name", desc: false }]}
-				/>
-			</CardContent>
-
-			<Dialog
-				open={isDialogOpen}
-				onOpenChange={(open) => {
-					if (!open) setIsDialogOpen(false);
-				}}
-			>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>
-							{isEditing ? t("editCustomer") : t("createCustomer")}
-						</DialogTitle>
-					</DialogHeader>
-					<form
-						onSubmit={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							form.handleSubmit();
-						}}
+		<>
+			{!isOnline && (
+				<div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-blue-900 text-sm">
+					Offline mode. Perubahan pelanggan akan disinkronkan nanti.
+				</div>
+			)}
+			<Card className="flex flex-col gap-4 p-3 sm:gap-6 sm:p-6">
+				<CardHeader className="p-0">
+					<SearchFilter
+						search={searchTerm}
+						onSearchChange={setSearchTerm}
+						searchPlaceholder={t("searchPlaceholder")}
+						filters={[
+							{
+								options: statusFilterOptions,
+								value: statusFilter,
+								onChange: setStatusFilter,
+							},
+						]}
 					>
-						<div className="grid gap-4 py-4">
-							<form.Field name="name">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="name">{tc("name")}</Label>
-										<div className="col-span-3">
+						<Button size="sm" onClick={openCreate}>
+							<PlusCircle className="mr-2 h-4 w-4" />
+							{t("addCustomer")}
+						</Button>
+					</SearchFilter>
+				</CardHeader>
+				<CardContent className="p-0">
+					<DataTable
+						data={filteredCustomers}
+						columns={[...tableColumns, actionsColumn]}
+						mobileScroll
+						exportColumns={exportColumns}
+						exportFilename="customers"
+						emptyMessage={t("noCustomers")}
+						emptyIcon={<UsersIcon className="h-8 w-8" />}
+						defaultSort={[{ id: "name", desc: false }]}
+					/>
+				</CardContent>
+
+				<Dialog
+					open={isDialogOpen}
+					onOpenChange={(open) => {
+						if (!open) setIsDialogOpen(false);
+					}}
+				>
+					<DialogContent>
+						<DialogHeader>
+							<DialogTitle>
+								{isEditing ? t("editCustomer") : t("createCustomer")}
+							</DialogTitle>
+						</DialogHeader>
+						<form
+							onSubmit={(e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								form.handleSubmit();
+							}}
+						>
+							<div className="grid gap-4 py-4">
+								<form.Field name="name">
+									{(field) => (
+										<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+											<Label htmlFor="name">{tc("name")}</Label>
+											<div className="col-span-3">
+												<Input
+													id="name"
+													value={field.state.value}
+													onChange={(e) => field.handleChange(e.target.value)}
+													onBlur={field.handleBlur}
+													error={
+														field.state.meta.errors.length > 0
+															? field.state.meta.errors
+																	.map((e) => e?.message ?? e)
+																	.join(", ")
+															: undefined
+													}
+												/>
+											</div>
+										</div>
+									)}
+								</form.Field>
+								<form.Field name="email">
+									{(field) => (
+										<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+											<Label htmlFor="email">{tc("email")}</Label>
+											<div className="col-span-3">
+												<Input
+													id="email"
+													value={field.state.value}
+													onChange={(e) => field.handleChange(e.target.value)}
+													onBlur={field.handleBlur}
+													error={
+														field.state.meta.errors.length > 0
+															? field.state.meta.errors
+																	.map((e) => e?.message ?? e)
+																	.join(", ")
+															: undefined
+													}
+												/>
+											</div>
+										</div>
+									)}
+								</form.Field>
+								<form.Field name="phone">
+									{(field) => (
+										<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+											<Label htmlFor="phone">{tc("phone")}</Label>
+											<div className="col-span-3">
+												<Input
+													id="phone"
+													value={field.state.value}
+													onChange={(e) => field.handleChange(e.target.value)}
+													onBlur={field.handleBlur}
+													error={
+														field.state.meta.errors.length > 0
+															? field.state.meta.errors
+																	.map((e) => e?.message ?? e)
+																	.join(", ")
+															: undefined
+													}
+												/>
+											</div>
+										</div>
+									)}
+								</form.Field>
+								<form.Field name="address">
+									{(field) => (
+										<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+											<Label htmlFor="address">{tc("address")}</Label>
 											<Input
-												id="name"
+												id="address"
 												value={field.state.value}
 												onChange={(e) => field.handleChange(e.target.value)}
-												onBlur={field.handleBlur}
-												error={
-													field.state.meta.errors.length > 0
-														? field.state.meta.errors
-																.map((e) => e?.message ?? e)
-																.join(", ")
-														: undefined
-												}
+												className="col-span-3"
 											/>
 										</div>
-									</div>
-								)}
-							</form.Field>
-							<form.Field name="email">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="email">{tc("email")}</Label>
-										<div className="col-span-3">
-											<Input
-												id="email"
+									)}
+								</form.Field>
+								<form.Field name="status">
+									{(field) => (
+										<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
+											<Label htmlFor="status">{tc("status")}</Label>
+											<Select
 												value={field.state.value}
-												onChange={(e) => field.handleChange(e.target.value)}
-												onBlur={field.handleBlur}
-												error={
-													field.state.meta.errors.length > 0
-														? field.state.meta.errors
-																.map((e) => e?.message ?? e)
-																.join(", ")
-														: undefined
+												onValueChange={(value) =>
+													field.handleChange(value as "active" | "inactive")
 												}
-											/>
+											>
+												<SelectTrigger id="status" className="col-span-3">
+													<SelectValue placeholder={t("selectStatus")} />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="active">{tc("active")}</SelectItem>
+													<SelectItem value="inactive">
+														{tc("inactive")}
+													</SelectItem>
+												</SelectContent>
+											</Select>
 										</div>
-									</div>
-								)}
-							</form.Field>
-							<form.Field name="phone">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="phone">{tc("phone")}</Label>
-										<div className="col-span-3">
-											<Input
-												id="phone"
-												value={field.state.value}
-												onChange={(e) => field.handleChange(e.target.value)}
-												onBlur={field.handleBlur}
-												error={
-													field.state.meta.errors.length > 0
-														? field.state.meta.errors
-																.map((e) => e?.message ?? e)
-																.join(", ")
-														: undefined
-												}
-											/>
-										</div>
-									</div>
-								)}
-							</form.Field>
-							<form.Field name="address">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="address">{tc("address")}</Label>
-										<Input
-											id="address"
-											value={field.state.value}
-											onChange={(e) => field.handleChange(e.target.value)}
-											className="col-span-3"
-										/>
-									</div>
-								)}
-							</form.Field>
-							<form.Field name="status">
-								{(field) => (
-									<div className="flex flex-col gap-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4">
-										<Label htmlFor="status">{tc("status")}</Label>
-										<Select
-											value={field.state.value}
-											onValueChange={(value) =>
-												field.handleChange(value as "active" | "inactive")
+									)}
+								</form.Field>
+							</div>
+							<DialogFooter>
+								<Button
+									variant="secondary"
+									onClick={() => setIsDialogOpen(false)}
+								>
+									{tc("cancel")}
+								</Button>
+								<form.Subscribe selector={(state) => state.isSubmitting}>
+									{(isSubmitting) => (
+										<Button
+											type="submit"
+											disabled={
+												isSubmitting ||
+												createMutation.isPending ||
+												updateMutation.isPending
 											}
 										>
-											<SelectTrigger id="status" className="col-span-3">
-												<SelectValue placeholder={t("selectStatus")} />
-											</SelectTrigger>
-											<SelectContent>
-												<SelectItem value="active">{tc("active")}</SelectItem>
-												<SelectItem value="inactive">
-													{tc("inactive")}
-												</SelectItem>
-											</SelectContent>
-										</Select>
-									</div>
-								)}
-							</form.Field>
-						</div>
-						<DialogFooter>
-							<Button
-								variant="secondary"
-								onClick={() => setIsDialogOpen(false)}
-							>
-								{tc("cancel")}
-							</Button>
-							<form.Subscribe selector={(state) => state.isSubmitting}>
-								{(isSubmitting) => (
-									<Button
-										type="submit"
-										disabled={
-											isSubmitting ||
-											createMutation.isPending ||
-											updateMutation.isPending
-										}
-									>
-										{isEditing ? t("updateCustomer") : t("addCustomer")}
-									</Button>
-								)}
-							</form.Subscribe>
-						</DialogFooter>
-					</form>
-				</DialogContent>
-			</Dialog>
+											{isEditing ? t("updateCustomer") : t("addCustomer")}
+										</Button>
+									)}
+								</form.Subscribe>
+							</DialogFooter>
+						</form>
+					</DialogContent>
+				</Dialog>
 
-			<DeleteConfirmationDialog
-				open={isDeleteOpen}
-				onOpenChange={setIsDeleteOpen}
-				onConfirm={handleDelete}
-				description={t("deleteMessage")}
-			/>
-		</Card>
+				<DeleteConfirmationDialog
+					open={isDeleteOpen}
+					onOpenChange={setIsDeleteOpen}
+					onConfirm={handleDelete}
+					description={t("deleteMessage")}
+				/>
+			</Card>
+		</>
 	);
 }

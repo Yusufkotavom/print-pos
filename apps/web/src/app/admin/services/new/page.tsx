@@ -40,6 +40,7 @@ import {
 	replaceCachedCustomers,
 	replaceCachedProducts,
 	saveDraft,
+	upsertCachedServiceOrder,
 } from "@/lib/local-db/repo";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
@@ -58,20 +59,30 @@ export default function NewServicePage() {
 	const tPos = useTranslations("pos");
 	const locale = useLocale();
 	const isOnline = useOnlineStatus();
-	const { data: remoteProducts = [] } = useQuery(
-		trpc.products.list.queryOptions(),
-	);
-	const { data: remoteCustomers = [] } = useQuery(
-		trpc.customers.list.queryOptions(),
-	);
+	const {
+		data: remoteProducts = [],
+		isLoading: productsLoading,
+		error: productsError,
+	} = useQuery(trpc.products.list.queryOptions());
+	const {
+		data: remoteCustomers = [],
+		isLoading: customersLoading,
+		error: customersError,
+	} = useQuery(trpc.customers.list.queryOptions());
 	const [cachedProducts, setCachedProducts] = useState<typeof remoteProducts>(
 		[],
 	);
 	const [cachedCustomers, setCachedCustomers] = useState<
 		typeof remoteCustomers
 	>([]);
-	const products = remoteProducts.length ? remoteProducts : cachedProducts;
-	const customers = remoteCustomers.length ? remoteCustomers : cachedCustomers;
+	const products =
+		(productsLoading || productsError) && cachedProducts.length
+			? cachedProducts
+			: remoteProducts;
+	const customers =
+		(customersLoading || customersError) && cachedCustomers.length
+			? cachedCustomers
+			: remoteCustomers;
 	const [selectedProducts, setSelectedProducts] = useState<POSProductItem[]>(
 		[],
 	);
@@ -127,11 +138,13 @@ export default function NewServicePage() {
 	}, []);
 
 	useEffect(() => {
-		if (remoteProducts.length) void replaceCachedProducts(remoteProducts);
+		setCachedProducts(remoteProducts);
+		void replaceCachedProducts(remoteProducts);
 	}, [remoteProducts]);
 
 	useEffect(() => {
-		if (remoteCustomers.length) void replaceCachedCustomers(remoteCustomers);
+		setCachedCustomers(remoteCustomers);
+		void replaceCachedCustomers(remoteCustomers);
 	}, [remoteCustomers]);
 
 	useEffect(() => {
@@ -183,10 +196,7 @@ export default function NewServicePage() {
 		trpc.serviceOrders.create.mutationOptions({
 			onSuccess: async (serviceOrder, variables) => {
 				if (variables.clientServiceOrderId) {
-					await markServiceOrderSynced(
-						variables.clientServiceOrderId,
-						serviceOrder.id,
-					);
+					await markServiceOrderSynced(variables.clientServiceOrderId);
 				}
 				await clearDraft(SERVICE_DRAFT_KEY);
 				queryClient.invalidateQueries(trpc.serviceOrders.list.queryOptions());
@@ -278,6 +288,30 @@ export default function NewServicePage() {
 		};
 		if (!navigator.onLine) {
 			void queueServiceOrder(payload).then(async () => {
+				await upsertCachedServiceOrder({
+					id: -Date.now(),
+					service_number: payload.clientServiceOrderId,
+					customer_id: selectedCustomer.id,
+					service_type: serviceType,
+					status: "in_progress",
+					estimated_done_at: payload.estimatedDoneAt ?? null,
+					customer_note: customerNote || null,
+					internal_note: internalNote || null,
+					details_json: { text: detailText },
+					total_amount: total,
+					paid_amount: 0,
+					payment_status: "unpaid",
+					user_uid: "local",
+					created_at: new Date(),
+					warranty_unit: "none",
+					warranty_value: null,
+					warranty_started_at: null,
+					warranty_until: null,
+					warranty_notes: null,
+					completed_at: null,
+					client_service_order_id: payload.clientServiceOrderId,
+					customer: { name: selectedCustomer.name, phone: "" },
+				});
 				await clearDraft(SERVICE_DRAFT_KEY);
 				setSelectedProducts([]);
 				setSelectedCustomer(null);

@@ -8,6 +8,8 @@ export interface BaseUser {
 	email: string;
 	role?: string | null;
 	status?: string | null;
+	isPlatformAdmin?: boolean;
+	hasActiveSubscription?: boolean;
 }
 
 export interface TRPCContext {
@@ -26,14 +28,17 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
 	if (!ctx.user) {
 		throw new TRPCError({ code: "UNAUTHORIZED" });
 	}
+	if (ctx.user.status !== "active") {
+		throw new TRPCError({ code: "FORBIDDEN" });
+	}
+	if (!ctx.user.isPlatformAdmin && !ctx.user.hasActiveSubscription) {
+		throw new TRPCError({ code: "FORBIDDEN" });
+	}
 	return next({ ctx: { ...ctx, user: ctx.user } });
 });
 
 export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-	if (!ctx.user || ctx.user.status !== "active") {
-		throw new TRPCError({ code: "FORBIDDEN" });
-	}
-	if (ctx.user.role !== "super_admin" && ctx.user.role !== "admin") {
+	if (!ctx.user?.isPlatformAdmin) {
 		throw new TRPCError({ code: "FORBIDDEN" });
 	}
 	return next({ ctx: { ...ctx, user: ctx.user } });

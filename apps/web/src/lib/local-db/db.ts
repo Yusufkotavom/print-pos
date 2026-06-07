@@ -27,6 +27,24 @@ export type LocalPaymentMethod = {
 	payload: unknown;
 };
 
+export type LocalProductCategory = {
+	id: number;
+	serverId: number;
+	name: string;
+	updatedAt: string;
+	payload: unknown;
+};
+
+export type LocalServiceOrder = {
+	id: number;
+	serverId: number;
+	serviceNumber?: string | null;
+	customerName?: string | null;
+	status: string;
+	updatedAt: string;
+	payload: unknown;
+};
+
 export type LocalDraft = {
 	key: string;
 	payload: unknown;
@@ -49,8 +67,22 @@ export type LocalAppMeta = {
 
 export type SyncQueueItem = {
 	id: string;
-	entity: "order" | "serviceOrder" | "payment" | "customer" | "productImage";
-	operation: "create" | "update" | "delete";
+	entity:
+		| "order"
+		| "serviceOrder"
+		| "payment"
+		| "paymentMethod"
+		| "customer"
+		| "product"
+		| "productCategory"
+		| "productImage";
+	operation:
+		| "create"
+		| "update"
+		| "delete"
+		| "updateStatus"
+		| "receivePayment"
+		| "updateWarranty";
 	payload: unknown;
 	status: "pending" | "syncing" | "success" | "failed" | "conflict";
 	retryCount: number;
@@ -64,6 +96,8 @@ class FinOpenPOSLocalDB extends Dexie {
 	products!: Table<LocalProduct, number>;
 	customers!: Table<LocalCustomer, number>;
 	paymentMethods!: Table<LocalPaymentMethod, number>;
+	productCategories!: Table<LocalProductCategory, number>;
+	serviceOrders!: Table<LocalServiceOrder, number>;
 	productImages!: Table<LocalProductImage, string>;
 	appMeta!: Table<LocalAppMeta, string>;
 	drafts!: Table<LocalDraft, string>;
@@ -90,6 +124,31 @@ class FinOpenPOSLocalDB extends Dexie {
 			products: "id, serverId, name, sku, category, updatedAt",
 			customers: "id, serverId, name, phone, updatedAt",
 			paymentMethods: "id, serverId, name, updatedAt",
+			productImages: "key, productId, updatedAt",
+			appMeta: "key, updatedAt",
+			drafts: "key, updatedAt",
+			syncQueue:
+				"id, entity, operation, status, nextRetryAt, createdAt, updatedAt",
+		});
+		this.version(4).stores({
+			products: "id, serverId, name, sku, category, updatedAt",
+			customers: "id, serverId, name, phone, updatedAt",
+			paymentMethods: "id, serverId, name, updatedAt",
+			serviceOrders:
+				"id, serverId, serviceNumber, customerName, status, updatedAt",
+			productImages: "key, productId, updatedAt",
+			appMeta: "key, updatedAt",
+			drafts: "key, updatedAt",
+			syncQueue:
+				"id, entity, operation, status, nextRetryAt, createdAt, updatedAt",
+		});
+		this.version(5).stores({
+			products: "id, serverId, name, sku, category, updatedAt",
+			customers: "id, serverId, name, phone, updatedAt",
+			paymentMethods: "id, serverId, name, updatedAt",
+			productCategories: "id, serverId, name, updatedAt",
+			serviceOrders:
+				"id, serverId, serviceNumber, customerName, status, updatedAt",
 			productImages: "key, productId, updatedAt",
 			appMeta: "key, updatedAt",
 			drafts: "key, updatedAt",

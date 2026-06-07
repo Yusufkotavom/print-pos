@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
 	countPendingSyncItems,
 	enqueueSyncItem,
 	getNextRetryAt,
-	listReadySyncQueue,
 	listSyncQueue,
-	mapLocalToServerId,
 	removeSyncQueueItem,
 	updateSyncQueueItem,
 } from "@/lib/local-db/repo";
+import { syncReadyQueue } from "@/lib/local-db/sync-engine";
 
 export type QueuedServiceOrder = {
 	clientServiceOrderId: string;
@@ -39,8 +38,6 @@ export function useServiceOrderSync({
 	createServiceOrder: (payload: QueuedServiceOrder) => Promise<void>;
 }) {
 	const [queueCount, setQueueCount] = useState(0);
-	const syncInFlightRef = useRef(false);
-	const syncedIdsRef = useRef<Set<string>>(new Set());
 
 	const refreshQueueCount = useCallback(async () => {
 		setQueueCount(await countPendingSyncItems());
@@ -66,15 +63,7 @@ export function useServiceOrderSync({
 	);
 
 	const markServiceOrderSynced = useCallback(
-		async (clientServiceOrderId: string, serverId?: number) => {
-			syncedIdsRef.current.add(clientServiceOrderId);
-			if (serverId) {
-				await mapLocalToServerId(
-					"serviceOrder",
-					clientServiceOrderId,
-					serverId,
-				);
-			}
+		async (clientServiceOrderId: string) => {
 			await removeSyncQueueItem(clientServiceOrderId);
 			await refreshQueueCount();
 		},
@@ -98,31 +87,16 @@ export function useServiceOrderSync({
 	);
 
 	const syncQueuedServiceOrders = useCallback(async () => {
-		if (typeof window === "undefined") return;
-		if (syncInFlightRef.current || !navigator.onLine) return;
-		const queue = await listReadySyncQueue();
-		const serviceQueue = queue.filter((item) => item.entity === "serviceOrder");
-		if (serviceQueue.length === 0) {
-			await refreshQueueCount();
-			return;
-		}
-		syncInFlightRef.current = true;
-		try {
-			for (const queued of serviceQueue) {
-				const payload = queued.payload as QueuedServiceOrder;
-				if (syncedIdsRef.current.has(payload.clientServiceOrderId)) continue;
-				await updateSyncQueueItem(queued.id, {
-					status: "syncing",
-					errorMessage: undefined,
-					nextRetryAt: undefined,
-				});
-				await refreshQueueCount();
-				await createServiceOrder(payload);
-			}
-		} finally {
-			syncInFlightRef.current = false;
-			await refreshQueueCount();
-		}
+		await syncReadyQueue(
+			{
+				createServiceOrder: async (payload) => {
+					await createServiceOrder(payload as QueuedServiceOrder);
+					return undefined;
+				},
+			},
+			{ entities: ["serviceOrder"] },
+		);
+		await refreshQueueCount();
 	}, [createServiceOrder, refreshQueueCount]);
 
 	return {

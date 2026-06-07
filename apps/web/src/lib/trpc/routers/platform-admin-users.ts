@@ -1,8 +1,22 @@
-import { desc, eq } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db } from "@/lib/db";
 import { subscriptions, user } from "@/lib/db/schema";
 import { adminProcedure, router } from "../init";
+
+const requireSuperAdmin = (role?: string | null) => {
+	if (role !== "super_admin") {
+		throw new Error("Forbidden");
+	}
+};
+
+const getSuperAdminCount = async () => {
+	const [result] = await db
+		.select({ value: count() })
+		.from(user)
+		.where(eq(user.role, "super_admin"));
+	return result?.value ?? 0;
+};
 
 const userSchema = z.object({
 	id: z.string(),
@@ -32,7 +46,8 @@ export const platformAdminUsersRouter = router({
 	list: adminProcedure
 		.input(z.void())
 		.output(z.array(userSchema))
-		.query(async () => {
+		.query(async ({ ctx }) => {
+			requireSuperAdmin(ctx.user.role);
 			const users = await db.query.user.findMany({
 				orderBy: desc(user.createdAt),
 			});
@@ -83,8 +98,34 @@ export const platformAdminUsersRouter = router({
 			}),
 		)
 		.output(userSchema.omit({ subscription: true }))
-		.mutation(async ({ input }) => {
+		.mutation(async ({ ctx, input }) => {
+			requireSuperAdmin(ctx.user.role);
 			const { id, ...data } = input;
+			const targetUser = await db.query.user.findFirst({
+				where: eq(user.id, id),
+				columns: { id: true, role: true, status: true },
+			});
+			if (!targetUser) {
+				throw new Error("User not found");
+			}
+			if (targetUser.id === ctx.user.id) {
+				if (data.role && data.role !== "super_admin") {
+					throw new Error("Cannot remove your own platform access");
+				}
+				if (data.status && data.status !== "active") {
+					throw new Error("Cannot deactivate your own account");
+				}
+			}
+			if (
+				targetUser.role === "super_admin" &&
+				((data.role && data.role !== "super_admin") ||
+					(data.status && data.status !== "active"))
+			) {
+				const superAdminCount = await getSuperAdminCount();
+				if (superAdminCount <= 1) {
+					throw new Error("Cannot remove last super admin");
+				}
+			}
 			const [updated] = await db
 				.update(user)
 				.set(data)
@@ -103,8 +144,22 @@ export const platformAdminUsersRouter = router({
 		.input(z.object({ id: z.string() }))
 		.output(z.object({ success: z.boolean() }))
 		.mutation(async ({ ctx, input }) => {
+			requireSuperAdmin(ctx.user.role);
 			if (input.id === ctx.user.id) {
 				throw new Error("Cannot delete your own account");
+			}
+			const targetUser = await db.query.user.findFirst({
+				where: eq(user.id, input.id),
+				columns: { id: true, role: true },
+			});
+			if (!targetUser) {
+				throw new Error("User not found");
+			}
+			if (targetUser.role === "super_admin") {
+				const superAdminCount = await getSuperAdminCount();
+				if (superAdminCount <= 1) {
+					throw new Error("Cannot delete last super admin");
+				}
 			}
 			await db.delete(user).where(eq(user.id, input.id));
 			return { success: true };

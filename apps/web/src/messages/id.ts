@@ -58,6 +58,7 @@ const messages: Messages = {
 		paymentMethods: "Metode Pembayaran",
 		pos: "Buat Penjualan",
 		companySettings: "Pengaturan Perusahaan",
+		sync: "Status Sinkronisasi",
 		platformUsers: "Pengguna Platform",
 		platformSubscriptions: "Langganan",
 		adminPanel: "Panel Admin",

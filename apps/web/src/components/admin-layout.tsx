@@ -21,6 +21,7 @@ import {
 	MenuIcon,
 	Package2Icon,
 	PackageIcon,
+	RefreshCwIcon,
 	SettingsIcon,
 	ShieldIcon,
 	ShoppingBagIcon,
@@ -56,6 +57,7 @@ interface NavItem {
 		| "paymentMethods"
 		| "pos"
 		| "companySettings"
+		| "sync"
 		| "platformUsers"
 		| "platformSubscriptions";
 	icon: LucideIcon;
@@ -142,6 +144,11 @@ const navItems: NavItem[] = [
 		href: "/admin/company/settings",
 		labelKey: "companySettings",
 		icon: SettingsIcon,
+	},
+	{
+		href: "/admin/sync",
+		labelKey: "sync",
+		icon: RefreshCwIcon,
 	},
 	{
 		href: "/admin/users",

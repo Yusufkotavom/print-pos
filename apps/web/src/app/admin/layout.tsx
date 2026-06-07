@@ -11,9 +11,13 @@ export default async function Layout({
 	if (!user) {
 		redirect("/login");
 	}
-	const isPlatformAdmin =
-		(user.role === "super_admin" || user.role === "admin") &&
-		user.status === "active";
+	if (user.status !== "active") {
+		redirect("/login");
+	}
+	if (!user.isPlatformAdmin && !user.hasActiveSubscription) {
+		redirect("/login");
+	}
+	const isPlatformAdmin = user.isPlatformAdmin && user.status === "active";
 	return (
 		<AdminLayout isPlatformAdmin={isPlatformAdmin}>{children}</AdminLayout>
 	);

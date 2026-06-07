@@ -56,6 +56,7 @@ const messages = {
 		paymentMethods: "Payment Methods",
 		pos: "Create Sale",
 		companySettings: "Company Settings",
+		sync: "Sync Status",
 		platformUsers: "Platform Users",
 		platformSubscriptions: "Subscriptions",
 		adminPanel: "Admin Panel",

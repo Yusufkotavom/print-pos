@@ -245,7 +245,7 @@ export default function OrderDetailPage({
 					wholesale_price: product?.wholesale_price ?? null,
 					wholesale_min_qty: product?.wholesale_min_qty ?? null,
 					category: product?.category ?? "",
-					image_url: product?.image_url ?? item.product?.image_url ?? null,
+					image_url: product?.image_url ?? null,
 					quantity: item.quantity,
 				};
 			}),

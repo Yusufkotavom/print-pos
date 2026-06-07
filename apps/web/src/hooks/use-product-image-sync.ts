@@ -1,15 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import {
 	enqueueSyncItem,
-	getNextRetryAt,
 	listReadySyncQueue,
 	listSyncQueue,
-	readCachedProductImage,
-	removeCachedProductImage,
-	removeSyncQueueItem,
-	updateSyncQueueItem,
 } from "@/lib/local-db/repo";
-import { uploadProductImage } from "@/lib/product-images";
+import { syncReadyQueue } from "@/lib/local-db/sync-engine";
 
 export type QueuedProductImageUpload = {
 	productId: number;
@@ -64,44 +59,10 @@ export function useProductImageSync({
 	);
 
 	const syncQueuedProductImages = useCallback(async () => {
-		if (typeof window === "undefined") return;
-		if (!navigator.onLine) return;
-		const queue = await listReadySyncQueue();
-		const imageQueue = queue.filter((item) => item.entity === "productImage");
-		for (const queued of imageQueue) {
-			const payload = queued.payload as QueuedProductImageUpload;
-			const cached = await readCachedProductImage(payload.productId);
-			if (!cached?.blob) {
-				await removeSyncQueueItem(queued.id);
-				continue;
-			}
-			await updateSyncQueueItem(queued.id, {
-				status: "syncing",
-				errorMessage: undefined,
-				nextRetryAt: undefined,
-			});
-			try {
-				const uploaded = await uploadProductImage(cached.blob);
-				await updateProductImage({
-					id: payload.productId,
-					image_url: uploaded.url,
-					image_key: uploaded.key,
-					image_width: uploaded.width,
-					image_height: uploaded.height,
-				});
-				await removeCachedProductImage(payload.productId);
-				await removeSyncQueueItem(queued.id);
-			} catch (error) {
-				const retryCount = queued.retryCount + 1;
-				await updateSyncQueueItem(queued.id, {
-					status: "failed",
-					retryCount,
-					errorMessage:
-						error instanceof Error ? error.message : "Failed to sync image",
-					nextRetryAt: getNextRetryAt(retryCount),
-				});
-			}
-		}
+		await syncReadyQueue(
+			{ updateProductImage },
+			{ entities: ["productImage"] },
+		);
 		await refreshQueueCount();
 	}, [refreshQueueCount, updateProductImage]);
 
