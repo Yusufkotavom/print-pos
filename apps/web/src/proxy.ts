@@ -22,7 +22,9 @@ export async function proxy(request: NextRequest) {
 		!pathname.startsWith("/auth") &&
 		!pathname.startsWith("/api/auth") &&
 		!pathname.startsWith("/api/docs") &&
-		!pathname.startsWith("/api/openapi.json")
+		!pathname.startsWith("/api/openapi.json") &&
+		pathname !== "/sw.js" &&
+		pathname !== "/manifest.webmanifest"
 	) {
 		const url = request.nextUrl.clone();
 		url.pathname = "/login";
@@ -34,6 +36,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
 	matcher: [
-		"/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+		"/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
 	],
 };

@@ -440,6 +440,8 @@ const messages = {
 		receiptHeader: "POS Receipt Header (Optional)",
 		receiptFooter: "POS Receipt Footer",
 		invoiceTerms: "Invoice Terms & Notes",
+		invoiceTermsPlaceholder:
+			"Example: Purchased goods cannot be returned unless otherwise agreed.",
 		serviceTerms: "Service Terms & Conditions",
 		serviceTermsPlaceholder:
 			"Example: Warranty follows agreement, completed jobs must be picked up within 30 days.",

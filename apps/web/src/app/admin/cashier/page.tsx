@@ -303,6 +303,7 @@ export default function Cashier() {
 						<DataTable
 							data={transactions}
 							columns={[...tableColumns, actionsColumn]}
+							mobileScroll
 							defaultSort={[{ id: "created_at", desc: true }]}
 							emptyMessage={t("noTransactions")}
 							afterRows={

@@ -127,6 +127,10 @@ export default function ServicesPage() {
 				<DataTable
 					data={filtered}
 					columns={columns}
+					mobileScroll
+					onRowClick={(row) => {
+						window.location.href = `/admin/services/${row.id}`;
+					}}
 					emptyMessage={t("noServices")}
 				/>
 			</CardContent>

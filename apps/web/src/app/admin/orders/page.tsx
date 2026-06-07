@@ -391,6 +391,10 @@ export default function OrdersPage() {
 				<DataTable
 					data={filteredOrders}
 					columns={[...tableColumns, actionsColumn]}
+					mobileScroll
+					onRowClick={(row) => {
+						window.location.href = `/admin/orders/${row.id}`;
+					}}
 					exportColumns={exportColumns}
 					exportFilename="orders"
 					emptyMessage={t("noOrders")}

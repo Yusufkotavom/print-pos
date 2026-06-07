@@ -292,6 +292,7 @@ export default function CustomersPage() {
 				<DataTable
 					data={filteredCustomers}
 					columns={[...tableColumns, actionsColumn]}
+					mobileScroll
 					exportColumns={exportColumns}
 					exportFilename="customers"
 					emptyMessage={t("noCustomers")}

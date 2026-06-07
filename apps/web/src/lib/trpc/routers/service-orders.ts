@@ -280,6 +280,70 @@ export const serviceOrdersRouter = router({
 			});
 		}),
 
+	update: protectedProcedure
+		.input(
+			z.object({
+				id: z.number(),
+				serviceType: serviceTypeSchema.optional(),
+				estimatedDoneAt: z.date().nullable().optional(),
+				customerNote: z.string().optional(),
+				internalNote: z.string().optional(),
+				details: z.record(z.string(), z.any()).optional(),
+			}),
+		)
+		.output(serviceOrderSummarySchema)
+		.mutation(async ({ ctx, input }) => {
+			const [updated] = await db
+				.update(serviceOrders)
+				.set({
+					service_type: input.serviceType,
+					estimated_done_at: input.estimatedDoneAt,
+					customer_note: input.customerNote?.trim() || null,
+					internal_note: input.internalNote?.trim() || null,
+					details_json: input.details,
+				})
+				.where(
+					and(
+						eq(serviceOrders.id, input.id),
+						eq(serviceOrders.user_uid, ctx.user.id),
+					),
+				)
+				.returning();
+			if (!updated) throw new Error("Service not found");
+			const customer = await db.query.customers.findFirst({
+				where: eq(customers.id, updated.customer_id ?? 0),
+				columns: { name: true, phone: true },
+			});
+			return { ...updated, customer: customer ?? null };
+		}),
+
+	delete: protectedProcedure
+		.input(z.object({ id: z.number() }))
+		.output(z.object({ success: z.boolean() }))
+		.mutation(async ({ ctx, input }) => {
+			await db.transaction(async (tx) => {
+				const current = await tx.query.serviceOrders.findFirst({
+					where: and(
+						eq(serviceOrders.id, input.id),
+						eq(serviceOrders.user_uid, ctx.user.id),
+					),
+					with: { payments: true },
+				});
+				if (!current) return;
+				if (current.payments.length > 0) {
+					throw new Error("Service with payments cannot be deleted");
+				}
+				await tx
+					.delete(transactions)
+					.where(eq(transactions.service_order_id, input.id));
+				await tx
+					.delete(serviceOrderItems)
+					.where(eq(serviceOrderItems.service_order_id, input.id));
+				await tx.delete(serviceOrders).where(eq(serviceOrders.id, input.id));
+			});
+			return { success: true };
+		}),
+
 	updateStatus: protectedProcedure
 		.input(
 			z.object({
@@ -316,6 +380,50 @@ export const serviceOrdersRouter = router({
 					completed_at: input.status === "done" ? new Date() : null,
 					warranty_notes: input.warrantyNotes?.trim() || current.warranty_notes,
 					...warrantyPatch,
+				})
+				.where(
+					and(
+						eq(serviceOrders.id, input.id),
+						eq(serviceOrders.user_uid, ctx.user.id),
+					),
+				)
+				.returning();
+			const customer = await db.query.customers.findFirst({
+				where: eq(customers.id, updated.customer_id ?? 0),
+				columns: { name: true, phone: true },
+			});
+			return { ...updated, customer: customer ?? null };
+		}),
+
+	updateWarranty: protectedProcedure
+		.input(
+			z.object({
+				id: z.number(),
+				warrantyUnit: z.enum(["none", "day", "month", "year"]),
+				warrantyValue: z.number().int().positive().optional(),
+				warrantyNotes: z.string().optional(),
+			}),
+		)
+		.output(serviceOrderSummarySchema)
+		.mutation(async ({ ctx, input }) => {
+			const current = await db.query.serviceOrders.findFirst({
+				where: and(
+					eq(serviceOrders.id, input.id),
+					eq(serviceOrders.user_uid, ctx.user.id),
+				),
+			});
+			if (!current) throw new Error("Service not found");
+			const warrantyPatch = getWarrantyPatch({
+				unit: input.warrantyUnit,
+				value: input.warrantyValue,
+				isPaid: current.payment_status === "paid" && current.status === "done",
+				currentStartedAt: current.warranty_started_at,
+			});
+			const [updated] = await db
+				.update(serviceOrders)
+				.set({
+					...warrantyPatch,
+					warranty_notes: input.warrantyNotes?.trim() || null,
 				})
 				.where(
 					and(
@@ -400,9 +508,11 @@ export const serviceOrdersRouter = router({
 					serviceOrder.id,
 				);
 				const warrantyPatch = getWarrantyPatch({
-					unit: input.warrantyUnit,
-					value: input.warrantyValue,
-					isPaid: paymentUpdated.payment_status === "paid",
+					unit: serviceOrder.warranty_unit,
+					value: serviceOrder.warranty_value,
+					isPaid:
+						paymentUpdated.payment_status === "paid" &&
+						serviceOrder.status === "done",
 					currentStartedAt: serviceOrder.warranty_started_at,
 				});
 				const [updated] = await tx
@@ -410,8 +520,6 @@ export const serviceOrdersRouter = router({
 					.set({
 						paid_amount: paymentUpdated.paid_amount,
 						payment_status: paymentUpdated.payment_status,
-						warranty_notes:
-							input.warrantyNotes?.trim() || serviceOrder.warranty_notes,
 						...warrantyPatch,
 					})
 					.where(eq(serviceOrders.id, serviceOrder.id))

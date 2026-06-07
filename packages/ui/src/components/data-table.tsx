@@ -59,6 +59,7 @@ interface DataTableProps<T> {
 	emptyAction?: ReactNode;
 	afterRows?: ReactNode;
 	children?: ReactNode;
+	mobileScroll?: boolean;
 }
 
 // ── Column mapping ─────────────────────────────────────────────────────────
@@ -156,6 +157,7 @@ export function DataTable<T>({
 	emptyAction,
 	afterRows,
 	children,
+	mobileScroll = false,
 }: DataTableProps<T>) {
 	const [sorting, setSorting] = useState<SortingState>(defaultSort ?? []);
 	const [isMobile, setIsMobile] = useState(false);
@@ -208,7 +210,13 @@ export function DataTable<T>({
 			)}
 
 			<div className="overflow-x-auto">
-				<Table className="table-fixed md:table-auto">
+				<Table
+					className={cn(
+						mobileScroll
+							? "min-w-[920px] table-auto"
+							: "table-fixed md:table-auto",
+					)}
+				>
 					<TableHeader>
 						{table.getHeaderGroups().map((headerGroup) => (
 							<TableRow key={headerGroup.id}>
@@ -216,7 +224,9 @@ export function DataTable<T>({
 									<TableHead
 										key={header.id}
 										className={cn(
-											"px-2 py-2 text-xs whitespace-nowrap md:px-4 md:text-sm",
+											mobileScroll
+												? "px-2 py-2 text-xs whitespace-nowrap md:px-4 md:text-sm"
+												: "px-2 py-2 text-xs whitespace-nowrap md:px-4 md:text-sm",
 											getColumnMeta(header.column.columnDef.meta).className,
 										)}
 									>
@@ -264,7 +274,9 @@ export function DataTable<T>({
 										<TableCell
 											key={cell.id}
 											className={cn(
-												"max-w-[160px] overflow-hidden text-ellipsis px-2 py-2 align-middle text-xs whitespace-nowrap md:max-w-none md:px-4 md:text-sm",
+												mobileScroll
+													? "px-2 py-2 align-middle text-xs whitespace-nowrap md:px-4 md:text-sm"
+													: "max-w-[160px] overflow-hidden text-ellipsis px-2 py-2 align-middle text-xs whitespace-nowrap md:max-w-none md:px-4 md:text-sm",
 												getColumnMeta(cell.column.columnDef.meta).className,
 											)}
 										>

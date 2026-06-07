@@ -606,6 +606,7 @@ export default function Products() {
 					<DataTable
 						data={filteredProducts}
 						columns={[...columns, actionsColumn]}
+						mobileScroll
 						emptyMessage={t("noProducts")}
 						emptyIcon={<PackageIcon className="h-8 w-8" />}
 						defaultSort={[{ id: "name", desc: false }]}

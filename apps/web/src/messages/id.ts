@@ -445,6 +445,8 @@ const messages: Messages = {
 		receiptHeader: "Header Struk POS (Opsional)",
 		receiptFooter: "Footer Struk POS",
 		invoiceTerms: "Catatan / Syarat Ketentuan Invoice",
+		invoiceTermsPlaceholder:
+			"Contoh: Barang yang sudah dibeli tidak dapat dikembalikan kecuali ada kesepakatan lain.",
 		serviceTerms: "Syarat & Ketentuan Service",
 		serviceTermsPlaceholder:
 			"Contoh: Garansi sesuai kesepakatan, barang diambil maksimal 30 hari setelah selesai.",

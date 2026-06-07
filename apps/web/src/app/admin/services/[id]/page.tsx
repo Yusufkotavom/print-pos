@@ -40,6 +40,7 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { use, useState } from "react";
 import { toast } from "sonner";
+import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { PaymentDialog } from "@/components/payment-dialog";
 import { useTRPC } from "@/lib/trpc/client";
 import { formatCurrency } from "@/lib/utils";
@@ -65,11 +66,18 @@ export default function ServiceDetailPage({
 	const tc = useTranslations("common");
 	const locale = useLocale();
 	const [paymentOpen, setPaymentOpen] = useState(false);
+	const [editOpen, setEditOpen] = useState(false);
+	const [deleteOpen, setDeleteOpen] = useState(false);
+	const [warrantyDialogOpen, setWarrantyDialogOpen] = useState(false);
 	const [statusDialogOpen, setStatusDialogOpen] = useState(false);
 	const [nextStatus, setNextStatus] = useState<
 		(typeof statuses)[number] | null
 	>(null);
 	const [statusWhatsappEnabled, setStatusWhatsappEnabled] = useState(true);
+	const [editServiceType, setEditServiceType] = useState("");
+	const [editEstimatedDoneAt, setEditEstimatedDoneAt] = useState("");
+	const [editCustomerNote, setEditCustomerNote] = useState("");
+	const [editInternalNote, setEditInternalNote] = useState("");
 	const [warrantyUnit, setWarrantyUnit] = useState<
 		"none" | "day" | "month" | "year"
 	>("none");
@@ -81,10 +89,35 @@ export default function ServiceDetailPage({
 	const { data: paymentMethods = [] } = useQuery(
 		trpc.paymentMethods.list.queryOptions(),
 	);
+	const { data: serviceTypes = [] } = useQuery(
+		trpc.serviceTypes.list.queryOptions(),
+	);
 	const { data: companySettings } = useQuery(
 		trpc.companySettings.get.queryOptions(),
 	);
 
+	const updateService = useMutation(
+		trpc.serviceOrders.update.mutationOptions({
+			onSuccess: () => {
+				queryClient.invalidateQueries(
+					trpc.serviceOrders.get.queryOptions({ id: serviceId }),
+				);
+				queryClient.invalidateQueries(trpc.serviceOrders.list.queryOptions());
+				setEditOpen(false);
+				toast.success("Service diperbarui");
+			},
+			onError: (error) => toast.error(error.message || t("updateError")),
+		}),
+	);
+	const deleteService = useMutation(
+		trpc.serviceOrders.delete.mutationOptions({
+			onSuccess: () => {
+				toast.success("Service dihapus");
+				window.location.href = "/admin/services";
+			},
+			onError: (error) => toast.error(error.message || t("deleteError")),
+		}),
+	);
 	const receivePayment = useMutation(
 		trpc.serviceOrders.receivePayment.mutationOptions({
 			onSuccess: () => {
@@ -96,6 +129,19 @@ export default function ServiceDetailPage({
 				toast.success(t("paymentReceived"));
 			},
 			onError: (error) => toast.error(error.message || t("paymentError")),
+		}),
+	);
+	const updateWarranty = useMutation(
+		trpc.serviceOrders.updateWarranty.mutationOptions({
+			onSuccess: () => {
+				queryClient.invalidateQueries(
+					trpc.serviceOrders.get.queryOptions({ id: serviceId }),
+				);
+				queryClient.invalidateQueries(trpc.serviceOrders.list.queryOptions());
+				setWarrantyDialogOpen(false);
+				toast.success("Garansi diperbarui");
+			},
+			onError: (error) => toast.error(error.message || t("updateError")),
 		}),
 	);
 	const updateStatus = useMutation(
@@ -151,14 +197,26 @@ export default function ServiceDetailPage({
 		? new Date(service.warranty_started_at)
 		: null;
 	const warrantyActive = warrantyUntil ? warrantyUntil >= new Date() : false;
+	const warrantyPendingActivation =
+		service.warranty_unit !== "none" &&
+		!warrantyStartedAt &&
+		service.payment_status !== "paid";
+	const warrantyWaitingCompletion =
+		service.warranty_unit !== "none" &&
+		!warrantyStartedAt &&
+		service.payment_status === "paid";
 	const warrantyLabel =
 		service.warranty_unit === "none"
 			? t("warrantyNone")
-			: warrantyUntil
-				? warrantyActive
-					? `Aktif sampai ${warrantyUntil.toLocaleDateString(locale)}`
-					: `Expired ${warrantyUntil.toLocaleDateString(locale)}`
-				: `${service.warranty_value ?? 0} ${t(`warranty_${service.warranty_unit}` as never)}`;
+			: warrantyPendingActivation
+				? "Menunggu service lunas"
+				: warrantyWaitingCompletion
+					? "Menunggu service selesai"
+					: warrantyUntil
+						? warrantyActive
+							? `Aktif sampai ${warrantyUntil.toLocaleDateString(locale)}`
+							: `Expired ${warrantyUntil.toLocaleDateString(locale)}`
+						: `${service.warranty_value ?? 0} ${t(`warranty_${service.warranty_unit}` as never)}`;
 
 	const openWhatsappForStatus = (status: (typeof statuses)[number]) => {
 		const customerPhone =
@@ -197,8 +255,42 @@ export default function ServiceDetailPage({
 						<FileTextIcon className="mr-2 h-4 w-4" />
 						{t("printDocument")}
 					</Button>
+					<Button
+						variant="outline"
+						onClick={() => {
+							setEditServiceType(service.service_type);
+							setEditEstimatedDoneAt(
+								service.estimated_done_at
+									? new Date(service.estimated_done_at)
+											.toISOString()
+											.slice(0, 16)
+									: "",
+							);
+							setEditCustomerNote(service.customer_note ?? "");
+							setEditInternalNote(service.internal_note ?? "");
+							setEditOpen(true);
+						}}
+					>
+						Edit
+					</Button>
+					<Button
+						variant="outline"
+						onClick={() => {
+							setWarrantyUnit(
+								service.warranty_unit as "none" | "day" | "month" | "year",
+							);
+							setWarrantyValue(String(service.warranty_value ?? ""));
+							setWarrantyNotes(service.warranty_notes ?? "");
+							setWarrantyDialogOpen(true);
+						}}
+					>
+						Atur Garansi
+					</Button>
 					<Button variant="outline" onClick={() => setPaymentOpen(true)}>
 						{t("receivePayment")}
+					</Button>
+					<Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+						Delete
 					</Button>
 				</div>
 			</div>
@@ -216,7 +308,10 @@ export default function ServiceDetailPage({
 						<div className="text-muted-foreground text-sm">
 							{t("serviceType")}
 						</div>
-						<div>{t(`type_${service.service_type}` as never)}</div>
+						<div>
+							{serviceTypes.find((item) => item.value === service.service_type)
+								?.name ?? service.service_type}
+						</div>
 					</div>
 					<div>
 						<div className="text-muted-foreground text-sm">{tc("status")}</div>
@@ -445,20 +540,90 @@ export default function ServiceDetailPage({
 				</DialogContent>
 			</Dialog>
 
-			<PaymentDialog
-				open={paymentOpen}
-				onOpenChange={setPaymentOpen}
-				title={t("receivePayment")}
-				totalLabel={tc("total")}
-				amountLabel={t("paymentAmount")}
-				paymentMethodLabel={t("paymentMethod")}
-				submitLabel={tc("save")}
-				cancelLabel={tc("cancel")}
-				totalAmount={service.total_amount}
-				maxAmount={Math.max(0, service.total_amount - service.paid_amount)}
-				allowOverpayment
-				extraContent={
-					<div className="grid gap-3 sm:grid-cols-[180px_1fr]">
+			<Dialog open={editOpen} onOpenChange={setEditOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Edit Service</DialogTitle>
+					</DialogHeader>
+					<div className="grid gap-4">
+						<div className="space-y-2">
+							<Label>{t("serviceType")}</Label>
+							<Select
+								value={editServiceType}
+								onValueChange={setEditServiceType}
+							>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{serviceTypes.map((item) => (
+										<SelectItem key={item.id} value={item.value}>
+											{item.name}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+						<div className="space-y-2">
+							<Label>{t("estimatedDoneAt")}</Label>
+							<Input
+								type="datetime-local"
+								value={editEstimatedDoneAt}
+								onChange={(event) => setEditEstimatedDoneAt(event.target.value)}
+							/>
+						</div>
+						<div className="space-y-2">
+							<Label>{t("customerNote")}</Label>
+							<Textarea
+								value={editCustomerNote}
+								onChange={(event) => setEditCustomerNote(event.target.value)}
+								rows={3}
+							/>
+						</div>
+						<div className="space-y-2">
+							<Label>{t("internalNote")}</Label>
+							<Textarea
+								value={editInternalNote}
+								onChange={(event) => setEditInternalNote(event.target.value)}
+								rows={3}
+							/>
+						</div>
+					</div>
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => setEditOpen(false)}
+						>
+							{tc("cancel")}
+						</Button>
+						<Button
+							type="button"
+							disabled={updateService.isPending}
+							onClick={() =>
+								updateService.mutate({
+									id: service.id,
+									serviceType: editServiceType,
+									estimatedDoneAt: editEstimatedDoneAt
+										? new Date(editEstimatedDoneAt)
+										: null,
+									customerNote: editCustomerNote,
+									internalNote: editInternalNote,
+								})
+							}
+						>
+							{tc("save")}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog open={warrantyDialogOpen} onOpenChange={setWarrantyDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Atur Garansi</DialogTitle>
+					</DialogHeader>
+					<div className="grid gap-4">
 						<div className="space-y-2">
 							<Label>{t("warranty")}</Label>
 							<Select
@@ -489,7 +654,7 @@ export default function ServiceDetailPage({
 								placeholder={t("warrantyValue")}
 							/>
 						</div>
-						<div className="space-y-2 sm:col-span-2">
+						<div className="space-y-2">
 							<Label>Catatan Garansi</Label>
 							<Textarea
 								value={warrantyNotes}
@@ -497,8 +662,57 @@ export default function ServiceDetailPage({
 								rows={3}
 							/>
 						</div>
+						<div className="rounded-lg border bg-muted/40 p-3 text-sm">
+							{warrantyUnit === "none"
+								? "Garansi dimatikan."
+								: service.payment_status !== "paid"
+									? "Garansi akan aktif otomatis setelah service lunas."
+									: service.status !== "done"
+										? "Garansi akan aktif otomatis setelah service selesai."
+										: "Garansi aktif segera setelah disimpan."}
+						</div>
 					</div>
-				}
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => setWarrantyDialogOpen(false)}
+						>
+							{tc("cancel")}
+						</Button>
+						<Button
+							type="button"
+							disabled={updateWarranty.isPending}
+							onClick={() =>
+								updateWarranty.mutate({
+									id: service.id,
+									warrantyUnit,
+									warrantyValue:
+										warrantyUnit === "none"
+											? undefined
+											: Number.parseInt(warrantyValue || "0", 10) || undefined,
+									warrantyNotes,
+								})
+							}
+						>
+							{tc("save")}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			<PaymentDialog
+				open={paymentOpen}
+				onOpenChange={setPaymentOpen}
+				title={t("receivePayment")}
+				totalLabel={tc("total")}
+				amountLabel={t("paymentAmount")}
+				paymentMethodLabel={t("paymentMethod")}
+				submitLabel={tc("save")}
+				cancelLabel={tc("cancel")}
+				totalAmount={service.total_amount}
+				maxAmount={Math.max(0, service.total_amount - service.paid_amount)}
+				allowOverpayment
 				locale={locale}
 				paymentMethods={paymentMethods}
 				isPending={receivePayment.isPending}
@@ -507,14 +721,14 @@ export default function ServiceDetailPage({
 						id: service.id,
 						paymentMethodId,
 						amount,
-						warrantyUnit,
-						warrantyValue:
-							warrantyUnit === "none"
-								? undefined
-								: Number.parseInt(warrantyValue || "0", 10) || undefined,
-						warrantyNotes,
 					})
 				}
+			/>
+			<DeleteConfirmationDialog
+				open={deleteOpen}
+				onOpenChange={setDeleteOpen}
+				onConfirm={() => deleteService.mutate({ id: service.id })}
+				description="Service dengan pembayaran tidak bisa dihapus."
 			/>
 		</div>
 	);
