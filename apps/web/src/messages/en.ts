@@ -87,6 +87,8 @@ const messages = {
 		submit: "Create account",
 		signupFailed:
 			"Sign up failed. Check your email and password, then try again.",
+		emailExists: "Email already registered. Please log in instead.",
+		invalidPassword: "Password is invalid. Use at least 8 characters.",
 		hasAccount: "Already have an account?",
 		logIn: "Log in",
 		namePlaceholder: "John Doe",
@@ -462,10 +464,14 @@ const messages = {
 		createdAt: "Created At",
 		userCount: "{count} users",
 		noUsers: "No users found.",
+		addUser: "Add User",
 		editUser: "Edit User",
 		nameRequired: "Name is required",
+		emailRequired: "Email is required",
+		created: "User created",
 		updated: "User updated",
 		deleted: "User deleted",
+		createError: "Failed to create user",
 		updateError: "Failed to update user",
 		deleteError: "Failed to delete user",
 		deleteMessage:

@@ -89,6 +89,8 @@ const messages: Messages = {
 		submit: "Buat akun",
 		signupFailed:
 			"Pendaftaran gagal. Cek email dan kata sandi, lalu coba lagi.",
+		emailExists: "Email sudah terdaftar. Silakan login.",
+		invalidPassword: "Kata sandi tidak valid. Gunakan minimal 8 karakter.",
 		hasAccount: "Sudah punya akun?",
 		logIn: "Masuk",
 		namePlaceholder: "Budi Santoso",
@@ -467,10 +469,14 @@ const messages: Messages = {
 		createdAt: "Dibuat Pada",
 		userCount: "{count} pengguna",
 		noUsers: "Tidak ada pengguna.",
+		addUser: "Tambah Pengguna",
 		editUser: "Edit Pengguna",
 		nameRequired: "Nama wajib diisi",
+		emailRequired: "Email wajib diisi",
+		created: "Pengguna dibuat",
 		updated: "Pengguna diperbarui",
 		deleted: "Pengguna dihapus",
+		createError: "Gagal membuat pengguna",
 		updateError: "Gagal memperbarui pengguna",
 		deleteError: "Gagal menghapus pengguna",
 		deleteMessage:

@@ -27,7 +27,12 @@ import {
 import { Skeleton } from "@finopenpos/ui/components/skeleton";
 import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
-import { FilePenIcon, TrashIcon, UsersIcon } from "lucide-react";
+import {
+	FilePenIcon,
+	PlusCircleIcon,
+	TrashIcon,
+	UsersIcon,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { z } from "zod/v4";
@@ -55,10 +60,19 @@ export default function AdminUsersPage() {
 
 	const userFormSchema = z.object({
 		name: z.string().min(1, t("nameRequired")),
+		email: z.email(t("emailRequired")),
+		password: z.string(),
 		role: z.enum(["user", "admin", "super_admin"]),
 		status: z.enum(["active", "inactive", "suspended"]),
 	});
 
+	const createMutation = useCrudMutation({
+		mutationOptions: trpc.platformAdminUsers.create.mutationOptions(),
+		invalidateKeys,
+		successMessage: t("created"),
+		errorMessage: t("createError"),
+		onSuccess: () => setIsDialogOpen(false),
+	});
 	const updateMutation = useCrudMutation({
 		mutationOptions: trpc.platformAdminUsers.update.mutationOptions(),
 		invalidateKeys,
@@ -76,19 +90,47 @@ export default function AdminUsersPage() {
 	const form = useForm({
 		defaultValues: {
 			name: "",
+			email: "",
+			password: "",
 			role: "user" as "user" | "admin" | "super_admin",
 			status: "active" as "active" | "inactive" | "suspended",
 		},
 		validators: { onSubmit: userFormSchema },
 		onSubmit: ({ value }) => {
-			if (editingId) updateMutation.mutate({ id: editingId, ...value });
+			if (editingId) {
+				updateMutation.mutate({
+					id: editingId,
+					name: value.name,
+					role: value.role,
+					status: value.status,
+				});
+				return;
+			}
+			if (value.password.length < 8) return;
+			createMutation.mutate({
+				name: value.name,
+				email: value.email,
+				password: value.password,
+				role: value.role,
+				status: value.status,
+			});
 		},
 	});
+
+	const openCreate = () => {
+		setEditingId(null);
+		form.reset();
+		form.setFieldValue("role", "user");
+		form.setFieldValue("status", "active");
+		setIsDialogOpen(true);
+	};
 
 	const openEdit = (item: PlatformUser) => {
 		setEditingId(item.id);
 		form.reset();
 		form.setFieldValue("name", item.name);
+		form.setFieldValue("email", item.email);
+		form.setFieldValue("password", "");
 		form.setFieldValue("role", item.role as "user" | "admin" | "super_admin");
 		form.setFieldValue(
 			"status",
@@ -161,14 +203,19 @@ export default function AdminUsersPage() {
 
 	return (
 		<Card className="flex flex-col gap-4 p-3 sm:gap-6 sm:p-6">
-			<CardHeader className="p-0">
+			<CardHeader className="flex flex-row items-center justify-between p-0">
 				<div className="flex items-center gap-2 text-muted-foreground">
 					<UsersIcon className="h-5 w-5" />
 					<span className="text-sm">
 						{t("userCount", { count: users.length })}
 					</span>
 				</div>
+				<Button size="sm" onClick={openCreate}>
+					<PlusCircleIcon className="mr-2 h-4 w-4" />
+					{t("addUser")}
+				</Button>
 			</CardHeader>
+
 			<CardContent className="p-0">
 				<DataTable
 					data={users}
@@ -182,8 +229,11 @@ export default function AdminUsersPage() {
 			<Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>{t("editUser")}</DialogTitle>
+						<DialogTitle>
+							{editingId ? t("editUser") : t("addUser")}
+						</DialogTitle>
 					</DialogHeader>
+
 					<form
 						onSubmit={(e) => {
 							e.preventDefault();
@@ -204,6 +254,35 @@ export default function AdminUsersPage() {
 									</div>
 								)}
 							</form.Field>
+							<form.Field name="email">
+								{(field) => (
+									<div className="grid gap-2">
+										<Label htmlFor="email">{tc("email")}</Label>
+										<Input
+											id="email"
+											type="email"
+											value={field.state.value}
+											disabled={Boolean(editingId)}
+											onChange={(e) => field.handleChange(e.target.value)}
+										/>
+									</div>
+								)}
+							</form.Field>
+							{!editingId ? (
+								<form.Field name="password">
+									{(field) => (
+										<div className="grid gap-2">
+											<Label htmlFor="password">{tc("password")}</Label>
+											<Input
+												id="password"
+												type="password"
+												value={field.state.value}
+												onChange={(e) => field.handleChange(e.target.value)}
+											/>
+										</div>
+									)}
+								</form.Field>
+							) : null}
 							<form.Field name="role">
 								{(field) => (
 									<div className="grid gap-2">

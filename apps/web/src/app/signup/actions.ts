@@ -31,7 +31,16 @@ export async function signup(formData: FormData) {
 			cancelAtPeriodEnd: false,
 			cancelledAt: null,
 		});
-	} catch {
+	} catch (error) {
+		if (error instanceof Error) {
+			const message = error.message.toLowerCase();
+			if (message.includes("email") && message.includes("exists")) {
+				return { error: "emailExists" };
+			}
+			if (message.includes("password")) {
+				return { error: "invalidPassword" };
+			}
+		}
 		return { error: "signupFailed" };
 	}
 
