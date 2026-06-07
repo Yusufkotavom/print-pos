@@ -18,6 +18,43 @@ function formatSequenceNumber(prefix: string, id: number) {
 	return `${prefix}-${date}-${String(id).padStart(4, "0")}`;
 }
 
+function calculateWarrantyUntil(
+	start: Date,
+	unit: string,
+	value: number | null | undefined,
+) {
+	if (unit === "none" || !value) return null;
+	const end = new Date(start);
+	if (unit === "day") end.setDate(end.getDate() + value);
+	if (unit === "month") end.setMonth(end.getMonth() + value);
+	if (unit === "year") end.setFullYear(end.getFullYear() + value);
+	return end;
+}
+
+function getWarrantyPatch({
+	unit,
+	value,
+	isPaid,
+	currentStartedAt,
+}: {
+	unit: string;
+	value?: number | null;
+	isPaid: boolean;
+	currentStartedAt?: Date | null;
+}) {
+	const warrantyValue = unit === "none" ? null : (value ?? null);
+	const startedAt =
+		unit !== "none" && isPaid ? (currentStartedAt ?? new Date()) : null;
+	return {
+		warranty_unit: unit,
+		warranty_value: warrantyValue,
+		warranty_started_at: startedAt,
+		warranty_until: startedAt
+			? calculateWarrantyUntil(startedAt, unit, warrantyValue)
+			: null,
+	};
+}
+
 const serviceStatusSchema = z.enum([
 	"in_progress",
 	"waiting",
@@ -45,6 +82,9 @@ const serviceOrderSummarySchema = z.object({
 	created_at: z.date().nullable(),
 	warranty_unit: z.string(),
 	warranty_value: z.number().nullable(),
+	warranty_started_at: z.date().nullable(),
+	warranty_until: z.date().nullable(),
+	warranty_notes: z.string().nullable(),
 	completed_at: z.date().nullable(),
 	client_service_order_id: z.string().nullable(),
 	customer: z.object({ name: z.string(), phone: z.string() }).nullable(),
@@ -241,14 +281,41 @@ export const serviceOrdersRouter = router({
 		}),
 
 	updateStatus: protectedProcedure
-		.input(z.object({ id: z.number(), status: serviceStatusSchema }))
+		.input(
+			z.object({
+				id: z.number(),
+				status: serviceStatusSchema,
+				warrantyNotes: z.string().optional(),
+			}),
+		)
 		.output(serviceOrderSummarySchema)
 		.mutation(async ({ ctx, input }) => {
+			const current = await db.query.serviceOrders.findFirst({
+				where: and(
+					eq(serviceOrders.id, input.id),
+					eq(serviceOrders.user_uid, ctx.user.id),
+				),
+			});
+			if (!current) throw new Error("Service not found");
+			const shouldStartWarranty =
+				input.status === "done" &&
+				current.payment_status === "paid" &&
+				current.warranty_unit !== "none";
+			const warrantyPatch = shouldStartWarranty
+				? getWarrantyPatch({
+						unit: current.warranty_unit,
+						value: current.warranty_value,
+						isPaid: true,
+						currentStartedAt: current.warranty_started_at,
+					})
+				: {};
 			const [updated] = await db
 				.update(serviceOrders)
 				.set({
 					status: input.status,
 					completed_at: input.status === "done" ? new Date() : null,
+					warranty_notes: input.warrantyNotes?.trim() || current.warranty_notes,
+					...warrantyPatch,
 				})
 				.where(
 					and(
@@ -257,7 +324,6 @@ export const serviceOrdersRouter = router({
 					),
 				)
 				.returning();
-			if (!updated) throw new Error("Service not found");
 			const customer = await db.query.customers.findFirst({
 				where: eq(customers.id, updated.customer_id ?? 0),
 				columns: { name: true, phone: true },
@@ -273,6 +339,7 @@ export const serviceOrdersRouter = router({
 				amount: z.number().int().positive(),
 				warrantyUnit: z.enum(["none", "day", "month", "year"]).default("none"),
 				warrantyValue: z.number().int().positive().optional(),
+				warrantyNotes: z.string().optional(),
 			}),
 		)
 		.output(serviceOrderSummarySchema)
@@ -332,16 +399,20 @@ export const serviceOrdersRouter = router({
 					tx,
 					serviceOrder.id,
 				);
+				const warrantyPatch = getWarrantyPatch({
+					unit: input.warrantyUnit,
+					value: input.warrantyValue,
+					isPaid: paymentUpdated.payment_status === "paid",
+					currentStartedAt: serviceOrder.warranty_started_at,
+				});
 				const [updated] = await tx
 					.update(serviceOrders)
 					.set({
 						paid_amount: paymentUpdated.paid_amount,
 						payment_status: paymentUpdated.payment_status,
-						warranty_unit: input.warrantyUnit,
-						warranty_value:
-							input.warrantyUnit === "none"
-								? null
-								: (input.warrantyValue ?? null),
+						warranty_notes:
+							input.warrantyNotes?.trim() || serviceOrder.warranty_notes,
+						...warrantyPatch,
 					})
 					.where(eq(serviceOrders.id, serviceOrder.id))
 					.returning();

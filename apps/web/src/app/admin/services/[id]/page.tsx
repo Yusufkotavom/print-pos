@@ -74,6 +74,7 @@ export default function ServiceDetailPage({
 		"none" | "day" | "month" | "year"
 	>("none");
 	const [warrantyValue, setWarrantyValue] = useState("");
+	const [warrantyNotes, setWarrantyNotes] = useState("");
 	const { data: service, isLoading } = useQuery(
 		trpc.serviceOrders.get.queryOptions({ id: serviceId }),
 	);
@@ -143,6 +144,22 @@ export default function ServiceDetailPage({
 			.replace(/{customer_name}/g, service.customer?.name ?? "")
 			.replace(/{status}/g, t(`status_${status}` as never))
 			.replace(/{product_information}/g, productInformationText);
+	const warrantyUntil = service.warranty_until
+		? new Date(service.warranty_until)
+		: null;
+	const warrantyStartedAt = service.warranty_started_at
+		? new Date(service.warranty_started_at)
+		: null;
+	const warrantyActive = warrantyUntil ? warrantyUntil >= new Date() : false;
+	const warrantyLabel =
+		service.warranty_unit === "none"
+			? t("warrantyNone")
+			: warrantyUntil
+				? warrantyActive
+					? `Aktif sampai ${warrantyUntil.toLocaleDateString(locale)}`
+					: `Expired ${warrantyUntil.toLocaleDateString(locale)}`
+				: `${service.warranty_value ?? 0} ${t(`warranty_${service.warranty_unit}` as never)}`;
+
 	const openWhatsappForStatus = (status: (typeof statuses)[number]) => {
 		const customerPhone =
 			service.customer?.phone || companySettings?.whatsapp || "";
@@ -227,11 +244,27 @@ export default function ServiceDetailPage({
 					</div>
 					<div>
 						<div className="text-muted-foreground text-sm">{t("warranty")}</div>
+						<div>{warrantyLabel}</div>
+					</div>
+					<div>
+						<div className="text-muted-foreground text-sm">Mulai Garansi</div>
 						<div>
-							{service.warranty_unit === "none"
-								? t("warrantyNone")
-								: `${service.warranty_value ?? 0} ${t(`warranty_${service.warranty_unit}` as never)}`}
+							{warrantyStartedAt
+								? warrantyStartedAt.toLocaleDateString(locale)
+								: "—"}
 						</div>
+					</div>
+					<div>
+						<div className="text-muted-foreground text-sm">
+							Berakhir Garansi
+						</div>
+						<div>
+							{warrantyUntil ? warrantyUntil.toLocaleDateString(locale) : "—"}
+						</div>
+					</div>
+					<div className="sm:col-span-2">
+						<div className="text-muted-foreground text-sm">Catatan Garansi</div>
+						<div>{service.warranty_notes || "—"}</div>
 					</div>
 					<div className="sm:col-span-2">
 						<div className="text-muted-foreground text-sm">
@@ -456,6 +489,14 @@ export default function ServiceDetailPage({
 								placeholder={t("warrantyValue")}
 							/>
 						</div>
+						<div className="space-y-2 sm:col-span-2">
+							<Label>Catatan Garansi</Label>
+							<Textarea
+								value={warrantyNotes}
+								onChange={(event) => setWarrantyNotes(event.target.value)}
+								rows={3}
+							/>
+						</div>
 					</div>
 				}
 				locale={locale}
@@ -471,6 +512,7 @@ export default function ServiceDetailPage({
 							warrantyUnit === "none"
 								? undefined
 								: Number.parseInt(warrantyValue || "0", 10) || undefined,
+						warrantyNotes,
 					})
 				}
 			/>

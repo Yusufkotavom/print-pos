@@ -124,9 +124,12 @@ export const serviceOrders = pgTable("service_orders", {
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
 	created_at: timestamp("created_at").defaultNow(),
 	warranty_unit: varchar("warranty_unit", { length: 20 })
-		.default("none")
-		.notNull(),
+		.notNull()
+		.default("none"),
 	warranty_value: integer("warranty_value"),
+	warranty_started_at: timestamp("warranty_started_at"),
+	warranty_until: timestamp("warranty_until"),
+	warranty_notes: text("warranty_notes"),
 	completed_at: timestamp("completed_at"),
 });
 
