@@ -23,6 +23,8 @@ export async function proxy(request: NextRequest) {
 		!pathname.startsWith("/api/auth") &&
 		!pathname.startsWith("/api/docs") &&
 		!pathname.startsWith("/api/openapi.json") &&
+		!pathname.startsWith("/offline") &&
+		!pathname.startsWith("/uploads/") &&
 		pathname !== "/sw.js" &&
 		pathname !== "/manifest.webmanifest"
 	) {

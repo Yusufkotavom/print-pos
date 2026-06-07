@@ -2,7 +2,7 @@
 
 ## Overview
 
-The fiscal module adds 4 tables to the PGLite database (Drizzle ORM). All tables are multi-tenant, keyed by `user_uid`. The schema follows the convention: monetary values in cents (integer), names in snake_case.
+The fiscal module adds 4 tables to the PostgreSQL database (Drizzle ORM). All tables are multi-tenant, keyed by `user_uid`. The schema follows the convention: monetary values in cents (integer), names in snake_case.
 
 **File**: `apps/web/src/lib/db/schema.ts`
 

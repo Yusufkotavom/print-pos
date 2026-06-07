@@ -27,9 +27,9 @@ const messages = {
 		title:
 			"Construído com as <accent>melhores ferramentas</accent> para o trabalho",
 		pglite: {
-			name: "PGLite",
+			name: "PostgreSQL + Dexie",
 			description:
-				"PostgreSQL embutido via WASM. Sem servidor de banco para instalar. Clone, rode, desenvolva.",
+				"PostgreSQL como fonte da verdade, Dexie para cache do navegador e fila de sincronização. Clone, rode, desenvolva.",
 		},
 		nextjs: {
 			name: "Next.js 16",
@@ -62,7 +62,7 @@ const messages = {
 		pos: {
 			name: "Ponto de Venda",
 			description:
-				"Checkout rápido e intuitivo. Funciona offline com PGLite. Suporta múltiplos métodos de pagamento.",
+				"Checkout rápido e intuitivo. Funciona offline com cache local e fila de sincronização. Suporta múltiplos métodos de pagamento.",
 		},
 		fiscal: {
 			name: "Integração Fiscal",
@@ -77,7 +77,7 @@ const messages = {
 		offline: {
 			name: "Banco Zero-Setup",
 			description:
-				"Alimentado por PGLite — PostgreSQL embutido via WASM. Sem servidor de banco para instalar ou configurar. Só rodar e usar.",
+				"Alimentado por PostgreSQL, Dexie e cache PWA. Fluxo local-first sem esconder o servidor como fonte da verdade.",
 		},
 		dashboard: {
 			name: "Painel Analítico",
