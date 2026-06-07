@@ -42,11 +42,15 @@ import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
 import { EllipsisVerticalIcon, Loader2Icon, PlusIcon } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod/v4";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { FormattedNumberInput } from "@/components/formatted-number-input";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
+import {
+	readCachedTransactions,
+	replaceCachedTransactions,
+} from "@/lib/local-db/repo";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -57,15 +61,33 @@ type TransactionStatus = "completed" | "pending";
 
 export default function Cashier() {
 	const trpc = useTRPC();
-	const { data: transactions = [], isLoading } = useQuery(
+	const { data: remoteTransactions = [], isLoading } = useQuery(
 		trpc.transactions.list.queryOptions(),
 	);
+	const [cachedTransactions, setCachedTransactions] = useState<Transaction[]>(
+		[],
+	);
+	const transactions = remoteTransactions.length
+		? remoteTransactions
+		: cachedTransactions;
+	const showSkeleton = isLoading && cachedTransactions.length === 0;
 	const { data: transactionCategories = [] } = useQuery(
 		trpc.transactionCategories.list.queryOptions(),
 	);
 	const t = useTranslations("cashier");
 	const tc = useTranslations("common");
 	const locale = useLocale();
+
+	useEffect(() => {
+		void readCachedTransactions<Transaction>().then(setCachedTransactions);
+	}, []);
+
+	useEffect(() => {
+		void replaceCachedTransactions(remoteTransactions);
+		if (remoteTransactions.length || !isLoading) {
+			setCachedTransactions(remoteTransactions);
+		}
+	}, [remoteTransactions, isLoading]);
 
 	const editTransactionSchema = z.object({
 		description: z.string().min(1, t("descriptionRequired")),
@@ -285,7 +307,7 @@ export default function Cashier() {
 					</div>
 				</CardHeader>
 				<CardContent>
-					{isLoading ? (
+					{showSkeleton ? (
 						<div className="space-y-3">
 							{Array.from({ length: 5 }).map((_, i) => (
 								<div key={i} className="flex items-center gap-4">

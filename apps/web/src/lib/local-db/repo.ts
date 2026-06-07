@@ -2,10 +2,12 @@ import { requestBackgroundSync } from "./background-sync";
 import {
 	type LocalCustomer,
 	type LocalDraft,
+	type LocalOrder,
 	type LocalPaymentMethod,
 	type LocalProduct,
 	type LocalProductCategory,
 	type LocalServiceOrder,
+	type LocalTransaction,
 	localDb,
 	type SyncQueueItem,
 } from "./db";
@@ -26,6 +28,81 @@ export async function readDraft<T>(key: string) {
 
 export async function clearDraft(key: string) {
 	await localDb.drafts.delete(key);
+}
+
+function toLocalOrder(order: unknown): LocalOrder {
+	const item = order as {
+		id: number;
+		order_number?: string | null;
+		status?: string | null;
+		payment_status?: string | null;
+		customer?: { name?: string | null } | null;
+	};
+	return {
+		id: item.id,
+		serverId: item.id > 0 ? item.id : 0,
+		orderNumber: item.order_number,
+		customerName: item.customer?.name ?? null,
+		status: item.status,
+		paymentStatus: item.payment_status,
+		updatedAt: new Date().toISOString(),
+		payload: order,
+	};
+}
+
+export async function replaceCachedOrders(orders: unknown[]) {
+	if (orders.length) {
+		await localDb.orders.clear();
+		await localDb.orders.bulkPut(orders.map(toLocalOrder));
+	} else {
+		const rows = await localDb.orders.where("serverId").above(0).toArray();
+		const idsToDelete = rows.map((row) => row.id);
+		if (idsToDelete.length) await localDb.orders.bulkDelete(idsToDelete);
+	}
+}
+
+export async function readCachedOrders<T>() {
+	const rows = await localDb.orders.toArray();
+	return rows.map((row) => row.payload as T);
+}
+
+function toLocalTransaction(transaction: unknown): LocalTransaction {
+	const item = transaction as {
+		id: number;
+		transaction_number?: string | null;
+		description?: string | null;
+		type?: string | null;
+		status?: string | null;
+	};
+	return {
+		id: item.id,
+		serverId: item.id > 0 ? item.id : 0,
+		transactionNumber: item.transaction_number,
+		description: item.description,
+		type: item.type,
+		status: item.status,
+		updatedAt: new Date().toISOString(),
+		payload: transaction,
+	};
+}
+
+export async function replaceCachedTransactions(transactions: unknown[]) {
+	if (transactions.length) {
+		await localDb.transactions.clear();
+		await localDb.transactions.bulkPut(transactions.map(toLocalTransaction));
+	} else {
+		const rows = await localDb.transactions
+			.where("serverId")
+			.above(0)
+			.toArray();
+		const idsToDelete = rows.map((row) => row.id);
+		if (idsToDelete.length) await localDb.transactions.bulkDelete(idsToDelete);
+	}
+}
+
+export async function readCachedTransactions<T>() {
+	const rows = await localDb.transactions.toArray();
+	return rows.map((row) => row.payload as T);
 }
 
 function toLocalProduct(product: unknown): LocalProduct {

@@ -69,11 +69,10 @@ export default function PaymentMethodsPage() {
 	}, []);
 
 	useEffect(() => {
-		// Hanya update cache kalau remote sudah selesai loading
-		if (isLoading) return;
+		if (isLoading || error) return;
 		setCachedMethods(remoteMethods);
 		void replaceCachedPaymentMethods(remoteMethods);
-	}, [remoteMethods, isLoading]);
+	}, [remoteMethods, error, isLoading]);
 
 	const paymentMethodSchema = z.object({
 		name: z.string().min(1, t("nameRequired")),

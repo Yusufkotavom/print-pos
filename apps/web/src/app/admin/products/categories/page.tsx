@@ -81,11 +81,10 @@ export default function ProductCategoriesPage() {
 	}, []);
 
 	useEffect(() => {
-		// Hanya update cache kalau remote sudah selesai loading
-		if (isLoading) return;
+		if (isLoading || error) return;
 		setCachedCategories(remoteCategories);
 		void replaceCachedProductCategories(remoteCategories);
-	}, [remoteCategories, isLoading]);
+	}, [remoteCategories, error, isLoading]);
 
 	const createMutation = useCrudMutation({
 		mutationOptions: trpc.productCategories.create.mutationOptions(),

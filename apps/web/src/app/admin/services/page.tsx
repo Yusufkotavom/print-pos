@@ -67,11 +67,10 @@ export default function ServicesPage() {
 	}, []);
 
 	useEffect(() => {
-		// Hanya update cache kalau remote sudah selesai loading
-		if (isLoading) return;
+		if (isLoading || error) return;
 		setCachedServices(remoteServices);
 		void replaceCachedServiceOrders(remoteServices);
-	}, [remoteServices, isLoading]);
+	}, [remoteServices, error, isLoading]);
 
 	const columns: Column<ServiceOrder>[] = [
 		{

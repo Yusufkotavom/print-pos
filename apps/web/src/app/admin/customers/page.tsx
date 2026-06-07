@@ -76,9 +76,10 @@ export default function CustomersPage() {
 	}, []);
 
 	useEffect(() => {
+		if (isLoading || error) return;
 		setCachedCustomers(remoteCustomers);
 		void replaceCachedCustomers(remoteCustomers);
-	}, [remoteCustomers]);
+	}, [remoteCustomers, error, isLoading]);
 
 	const customerFormSchema = z.object({
 		name: z.string().min(1, t("nameRequired")),

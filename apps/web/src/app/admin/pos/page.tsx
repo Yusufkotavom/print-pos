@@ -52,14 +52,21 @@ function createClientOrderId() {
 export default function POSPage() {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
-	const { data: remoteProducts = [], isLoading: loadingProducts } = useQuery(
-		trpc.products.list.queryOptions(),
-	);
-	const { data: remoteCustomers = [], isLoading: loadingCustomers } = useQuery(
-		trpc.customers.list.queryOptions(),
-	);
-	const { data: remotePaymentMethods = [], isLoading: loadingMethods } =
-		useQuery(trpc.paymentMethods.list.queryOptions());
+	const {
+		data: remoteProducts = [],
+		isLoading: loadingProducts,
+		error: productsError,
+	} = useQuery(trpc.products.list.queryOptions());
+	const {
+		data: remoteCustomers = [],
+		isLoading: loadingCustomers,
+		error: customersError,
+	} = useQuery(trpc.customers.list.queryOptions());
+	const {
+		data: remotePaymentMethods = [],
+		isLoading: loadingMethods,
+		error: paymentMethodsError,
+	} = useQuery(trpc.paymentMethods.list.queryOptions());
 	const t = useTranslations("pos");
 	const tc = useTranslations("common");
 	const tOrders = useTranslations("orders");
@@ -176,6 +183,7 @@ export default function POSPage() {
 		remoteCustomers,
 		remotePaymentMethods,
 		isRemoteLoading: loadingProducts || loadingCustomers || loadingMethods,
+		isRemoteError: !!productsError || !!customersError || !!paymentMethodsError,
 		createOrder: async (payload: {
 			clientOrderId?: string;
 			customerId: number;

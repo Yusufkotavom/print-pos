@@ -115,17 +115,16 @@ export default function Products() {
 	}, []);
 
 	useEffect(() => {
-		// Hanya update cache kalau remote sudah selesai loading (bukan default [])
-		if (isLoading) return;
+		if (isLoading || error) return;
 		setCachedProducts(remoteProducts);
 		void replaceCachedProducts(remoteProducts);
-	}, [remoteProducts, isLoading]);
+	}, [remoteProducts, error, isLoading]);
 
 	useEffect(() => {
-		if (categoriesLoading) return;
+		if (categoriesLoading || categoriesError) return;
 		setCachedCategories(remoteCategories);
 		void replaceCachedProductCategories(remoteCategories);
-	}, [remoteCategories, categoriesLoading]);
+	}, [remoteCategories, categoriesError, categoriesLoading]);
 
 	const categories =
 		(categoriesLoading || categoriesError) && cachedCategories.length

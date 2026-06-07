@@ -40,11 +40,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { z } from "zod/v4";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { FormattedNumberInput } from "@/components/formatted-number-input";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
+import { readCachedOrders, replaceCachedOrders } from "@/lib/local-db/repo";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/router";
 import { formatCurrency } from "@/lib/utils";
@@ -57,10 +58,13 @@ type PaymentStatus = "paid" | "partial" | "unpaid";
 export default function OrdersPage() {
 	const trpc = useTRPC();
 	const {
-		data: orders = [],
+		data: remoteOrders = [],
 		isLoading,
 		error,
 	} = useQuery(trpc.orders.list.queryOptions());
+	const [cachedOrders, setCachedOrders] = useState<Order[]>([]);
+	const orders = remoteOrders.length ? remoteOrders : cachedOrders;
+	const showSkeleton = isLoading && cachedOrders.length === 0;
 	const t = useTranslations("orders");
 	const tc = useTranslations("common");
 	const locale = useLocale();
@@ -250,6 +254,15 @@ export default function OrdersPage() {
 	const [statusFilter, setStatusFilter] = useState("all");
 	const [editCustomerName, setEditCustomerName] = useState("");
 
+	useEffect(() => {
+		void readCachedOrders<Order>().then(setCachedOrders);
+	}, []);
+
+	useEffect(() => {
+		void replaceCachedOrders(remoteOrders);
+		if (remoteOrders.length || !isLoading) setCachedOrders(remoteOrders);
+	}, [remoteOrders, isLoading]);
+
 	const invalidateKeys = trpc.orders.list.queryOptions().queryKey;
 
 	const updateMutation = useCrudMutation({
@@ -346,7 +359,7 @@ export default function OrdersPage() {
 		),
 	};
 
-	if (isLoading) {
+	if (showSkeleton) {
 		return (
 			<Card className="flex flex-col gap-6 p-6">
 				<CardHeader className="p-0">
@@ -371,7 +384,7 @@ export default function OrdersPage() {
 		);
 	}
 
-	if (error) {
+	if (error && cachedOrders.length === 0) {
 		return (
 			<Card>
 				<CardContent>

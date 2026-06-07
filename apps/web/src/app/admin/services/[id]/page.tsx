@@ -192,15 +192,14 @@ export default function ServiceDetailPage({
 	}, [remoteService]);
 
 	useEffect(() => {
-		// Hanya update cache kalau remote sudah selesai loading
-		if (productsLoading) return;
+		if (productsLoading || productsError) return;
 		setCachedProducts(remoteProducts);
-	}, [remoteProducts, productsLoading]);
+	}, [remoteProducts, productsError, productsLoading]);
 
 	useEffect(() => {
-		if (paymentMethodsLoading) return;
+		if (paymentMethodsLoading || paymentMethodsError) return;
 		setCachedPaymentMethods(remotePaymentMethods);
-	}, [remotePaymentMethods, paymentMethodsLoading]);
+	}, [remotePaymentMethods, paymentMethodsError, paymentMethodsLoading]);
 
 	const applyLocalService = (next: ServiceDetail) => {
 		setLocalService(next);

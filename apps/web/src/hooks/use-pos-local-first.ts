@@ -31,13 +31,14 @@ export function usePOSLocalFirst<
 	remotePaymentMethods,
 	createOrder,
 	isRemoteLoading = false,
+	isRemoteError = false,
 }: {
 	remoteProducts: TProduct[];
 	remoteCustomers: TCustomer[];
 	remotePaymentMethods: TPaymentMethod[];
 	createOrder: (payload: TCreatePayload) => Promise<void>;
-	/** Pass true saat query sedang loading agar cache tidak dihapus terlalu awal */
 	isRemoteLoading?: boolean;
+	isRemoteError?: boolean;
 }) {
 	const [cachedProducts, setCachedProducts] = useState<TProduct[]>([]);
 	const [cachedCustomers, setCachedCustomers] = useState<TCustomer[]>([]);
@@ -69,24 +70,22 @@ export function usePOSLocalFirst<
 	}, []);
 
 	useEffect(() => {
-		// Hanya sync ke cache kalau remote sudah selesai loading
-		// (bukan default [] saat masih fetching)
-		if (isRemoteLoading) return;
+		if (isRemoteLoading || isRemoteError) return;
 		setCachedProducts(remoteProducts);
 		void replaceCachedProducts(remoteProducts);
-	}, [remoteProducts, isRemoteLoading]);
+	}, [remoteProducts, isRemoteError, isRemoteLoading]);
 
 	useEffect(() => {
-		if (isRemoteLoading) return;
+		if (isRemoteLoading || isRemoteError) return;
 		setCachedCustomers(remoteCustomers);
 		void replaceCachedCustomers(remoteCustomers);
-	}, [remoteCustomers, isRemoteLoading]);
+	}, [remoteCustomers, isRemoteError, isRemoteLoading]);
 
 	useEffect(() => {
-		if (isRemoteLoading) return;
+		if (isRemoteLoading || isRemoteError) return;
 		setCachedPaymentMethods(remotePaymentMethods);
 		void replaceCachedPaymentMethods(remotePaymentMethods);
-	}, [remotePaymentMethods, isRemoteLoading]);
+	}, [remotePaymentMethods, isRemoteError, isRemoteLoading]);
 
 	const loadDraft = useCallback(async () => {
 		return readDraft<POSDraft>(POS_DRAFT_KEY);

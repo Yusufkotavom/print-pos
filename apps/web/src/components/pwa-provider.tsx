@@ -2,8 +2,13 @@
 
 import { Button } from "@finopenpos/ui/components/button";
 import { useMutation } from "@tanstack/react-query";
-import { XIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+	CheckCircle2Icon,
+	CloudOffIcon,
+	DownloadIcon,
+	XIcon,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { SYNC_MESSAGE } from "@/lib/local-db/background-sync";
 import { syncReadyQueue } from "@/lib/local-db/sync-engine";
 import { useTRPC } from "@/lib/trpc/client";
@@ -13,11 +18,18 @@ type BeforeInstallPromptEvent = Event & {
 	userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
+type OfflineStatus = "unsupported" | "installing" | "ready";
+
+const PWA_CACHE_NAME = "finopenpos-v4";
+
 export function PWAProvider() {
 	const trpc = useTRPC();
 	const [deferredPrompt, setDeferredPrompt] =
 		useState<BeforeInstallPromptEvent | null>(null);
 	const [dismissed, setDismissed] = useState(false);
+	const [isOnline, setIsOnline] = useState(true);
+	const [offlineStatus, setOfflineStatus] =
+		useState<OfflineStatus>("installing");
 	const createOrderMutation = useMutation(trpc.orders.create.mutationOptions());
 	const createServiceOrderMutation = useMutation(
 		trpc.serviceOrders.create.mutationOptions(),
@@ -81,18 +93,64 @@ export function PWAProvider() {
 	}, []);
 
 	useEffect(() => {
+		setIsOnline(navigator.onLine);
+		if (!("serviceWorker" in navigator)) setOfflineStatus("unsupported");
+		const updateOnline = () => setIsOnline(navigator.onLine);
+		window.addEventListener("online", updateOnline);
+		window.addEventListener("offline", updateOnline);
+		return () => {
+			window.removeEventListener("online", updateOnline);
+			window.removeEventListener("offline", updateOnline);
+		};
+	}, []);
+
+	useEffect(() => {
 		if (!("serviceWorker" in navigator)) return;
-		void navigator.serviceWorker.register("/sw.js");
+		const checkOfflineReady = async () => {
+			try {
+				await navigator.serviceWorker.ready;
+				if (!("caches" in window)) {
+					setOfflineStatus(
+						navigator.serviceWorker.controller ? "ready" : "installing",
+					);
+					return;
+				}
+				const cache = await caches.open(PWA_CACHE_NAME);
+				const [adminShell, posShell, offlinePage] = await Promise.all([
+					cache.match("/admin"),
+					cache.match("/admin/pos"),
+					cache.match("/offline"),
+				]);
+				setOfflineStatus(
+					adminShell && posShell && offlinePage ? "ready" : "installing",
+				);
+			} catch {
+				setOfflineStatus("installing");
+			}
+		};
+		void navigator.serviceWorker
+			.register("/sw.js")
+			.then(() => checkOfflineReady());
+		const handleControllerChange = () => void checkOfflineReady();
+		navigator.serviceWorker.addEventListener(
+			"controllerchange",
+			handleControllerChange,
+		);
 		const handleBeforeInstallPrompt = (event: Event) => {
 			event.preventDefault();
 			if (!dismissed) setDeferredPrompt(event as BeforeInstallPromptEvent);
 		};
 		window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-		return () =>
+		return () => {
+			navigator.serviceWorker.removeEventListener(
+				"controllerchange",
+				handleControllerChange,
+			);
 			window.removeEventListener(
 				"beforeinstallprompt",
 				handleBeforeInstallPrompt,
 			);
+		};
 	}, [dismissed]);
 
 	useEffect(() => {
@@ -188,37 +246,55 @@ export function PWAProvider() {
 		deleteCustomerMutation,
 	]);
 
-	if (!deferredPrompt || dismissed) return null;
+	const statusText = useMemo(() => {
+		if (offlineStatus === "unsupported") return "Offline app not supported";
+		if (offlineStatus === "ready") return "Offline cache ready";
+		return "Preparing offline cache";
+	}, [offlineStatus]);
+	const StatusIcon =
+		offlineStatus === "ready" ? CheckCircle2Icon : CloudOffIcon;
 
 	return (
-		<div className="fixed right-4 bottom-4 z-50 rounded-lg border bg-background p-3 shadow-lg">
-			<div className="mb-2 flex items-center justify-between gap-3">
-				<div className="text-sm">Install FinOpenPOS app</div>
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon"
-					className="h-7 w-7"
-					onClick={() => {
-						localStorage.setItem("finopenpos:pwa-install-dismissed", "1");
-						setDismissed(true);
-						setDeferredPrompt(null);
-					}}
-				>
-					<XIcon className="h-4 w-4" />
-				</Button>
+		<>
+			<div className="fixed bottom-4 left-4 z-50 flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-muted-foreground text-xs shadow-lg">
+				<StatusIcon className="h-4 w-4" />
+				<span>{statusText}</span>
+				<span className={isOnline ? "text-green-600" : "text-amber-600"}>
+					{isOnline ? "Online" : "Offline"}
+				</span>
 			</div>
-			<Button
-				type="button"
-				size="sm"
-				onClick={async () => {
-					await deferredPrompt.prompt();
-					await deferredPrompt.userChoice;
-					setDeferredPrompt(null);
-				}}
-			>
-				Install
-			</Button>
-		</div>
+			{deferredPrompt && !dismissed ? (
+				<div className="fixed right-4 bottom-4 z-50 rounded-lg border bg-background p-3 shadow-lg">
+					<div className="mb-2 flex items-center justify-between gap-3">
+						<div className="text-sm">Install FinOpenPOS app</div>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							className="h-7 w-7"
+							onClick={() => {
+								localStorage.setItem("finopenpos:pwa-install-dismissed", "1");
+								setDismissed(true);
+								setDeferredPrompt(null);
+							}}
+						>
+							<XIcon className="h-4 w-4" />
+						</Button>
+					</div>
+					<Button
+						type="button"
+						size="sm"
+						onClick={async () => {
+							await deferredPrompt.prompt();
+							await deferredPrompt.userChoice;
+							setDeferredPrompt(null);
+						}}
+					>
+						<DownloadIcon className="mr-2 h-4 w-4" />
+						Install
+					</Button>
+				</div>
+			) : null}
+		</>
 	);
 }
