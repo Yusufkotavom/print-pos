@@ -107,12 +107,78 @@ export default function ServicesPage() {
 			render: (row) => formatCurrency(row.total_amount, locale),
 		},
 		{
+			key: "payment_status",
+			header: t("paymentStatus") || "Payment Status",
+			render: (row) => {
+				const s = row.payment_status;
+				const color =
+					s === "paid"
+						? "text-green-600"
+						: s === "partial"
+							? "text-yellow-600"
+							: "text-red-600";
+				const label =
+					s === "paid" ? "Paid" : s === "partial" ? "Partial" : "Unpaid";
+				return <span className={color}>{label}</span>;
+			},
+		},
+		{
+			key: "paid_amount",
+			header: t("paidAmount") || "Paid Amount",
+			render: (row) => formatCurrency(row.paid_amount, locale),
+		},
+		{
+			key: "remaining_amount",
+			header: t("remainingAmount") || "Remaining",
+			render: (row) =>
+				formatCurrency(Math.max(0, row.total_amount - row.paid_amount), locale),
+		},
+		{
 			key: "estimated_done_at",
 			header: t("estimatedDoneAt"),
 			render: (row) =>
 				row.estimated_done_at
-					? new Date(row.estimated_done_at).toLocaleString(locale)
+					? new Date(row.estimated_done_at).toLocaleString(locale, {
+							dateStyle: "medium",
+							timeStyle: "short",
+						})
 					: "—",
+		},
+		{
+			key: "warranty",
+			header: t("warranty") || "Warranty",
+			render: (row) => {
+				if (row.warranty_unit === "none") return "—";
+				if (row.warranty_until) {
+					return new Date(row.warranty_until).toLocaleDateString(locale, {
+						dateStyle: "medium",
+					});
+				}
+				return `${row.warranty_value} ${row.warranty_unit}(s)`;
+			},
+		},
+		{
+			key: "note",
+			header: t("note") || "Note",
+			render: (row) => (
+				<span
+					className="inline-block max-w-[150px] truncate"
+					title={row.customer_note ?? ""}
+				>
+					{row.customer_note ?? "—"}
+				</span>
+			),
+		},
+		{
+			key: "created_at",
+			header: tc("date") || "Created At",
+			render: (row) =>
+				row.created_at
+					? new Date(row.created_at).toLocaleString(locale, {
+							dateStyle: "medium",
+							timeStyle: "short",
+						})
+					: "",
 		},
 		{
 			key: "actions",
@@ -127,6 +193,81 @@ export default function ServicesPage() {
 					</Link>
 				</TableActions>
 			),
+		},
+	];
+
+	const exportColumns = [
+		{
+			key: "service_number",
+			header: t("serviceNumber"),
+			getValue: (o: ServiceOrder) => o.service_number ?? `#${o.id}`,
+		},
+		{
+			key: "customer",
+			header: t("customer"),
+			getValue: (o: ServiceOrder) => o.customer?.name ?? "",
+		},
+		{
+			key: "service_type",
+			header: t("serviceType"),
+			getValue: (o: ServiceOrder) =>
+				serviceTypes.find((item) => item.value === o.service_type)?.name ??
+				o.service_type,
+		},
+		{
+			key: "status",
+			header: tc("status"),
+			getValue: (o: ServiceOrder) => o.status,
+		},
+		{
+			key: "payment_status",
+			header: t("paymentStatus") || "Payment Status",
+			getValue: (o: ServiceOrder) => o.payment_status,
+		},
+		{
+			key: "total_amount",
+			header: tc("total"),
+			getValue: (o: ServiceOrder) => (o.total_amount / 100).toFixed(2),
+		},
+		{
+			key: "paid_amount",
+			header: t("paidAmount") || "Paid Amount",
+			getValue: (o: ServiceOrder) => (o.paid_amount / 100).toFixed(2),
+		},
+		{
+			key: "remaining_amount",
+			header: t("remainingAmount") || "Remaining",
+			getValue: (o: ServiceOrder) =>
+				(Math.max(0, o.total_amount - o.paid_amount) / 100).toFixed(2),
+		},
+		{
+			key: "estimated_done_at",
+			header: t("estimatedDoneAt"),
+			getValue: (o: ServiceOrder) =>
+				o.estimated_done_at
+					? new Date(o.estimated_done_at).toLocaleString()
+					: "",
+		},
+		{
+			key: "warranty",
+			header: t("warranty") || "Warranty",
+			getValue: (o: ServiceOrder) => {
+				if (o.warranty_unit === "none") return "";
+				if (o.warranty_until)
+					return new Date(o.warranty_until).toLocaleDateString();
+				return `${o.warranty_value} ${o.warranty_unit}`;
+			},
+		},
+		{
+			key: "note",
+			header: t("note") || "Note",
+			getValue: (o: ServiceOrder) => o.customer_note ?? "",
+		},
+		{
+			key: "created_at",
+			header: tc("date") || "Created At",
+			getValue: (o: ServiceOrder) =>
+				o.created_at ? new Date(o.created_at).toLocaleString() : "",
 		},
 	];
 
@@ -183,7 +324,10 @@ export default function ServicesPage() {
 					onRowClick={(row) => {
 						window.location.href = `/admin/services/${row.id}`;
 					}}
+					exportColumns={exportColumns}
+					exportFilename="services"
 					emptyMessage={t("noServices")}
+					defaultSort={[{ id: "created_at", desc: true }]}
 				/>
 			</CardContent>
 		</Card>

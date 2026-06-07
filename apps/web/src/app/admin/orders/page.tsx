@@ -144,6 +144,21 @@ export default function OrdersPage() {
 				formatCurrency(Math.max(0, row.total_amount - row.paid_amount), locale),
 		},
 		{
+			key: "note",
+			header: t("note") || "Note",
+			sortable: true,
+			hideOnMobile: true,
+			accessorFn: (row) => row.note ?? "",
+			render: (row) => (
+				<span
+					className="inline-block max-w-[150px] truncate"
+					title={row.note ?? ""}
+				>
+					{row.note ?? "—"}
+				</span>
+			),
+		},
+		{
 			key: "status",
 			header: tc("status"),
 			sortable: true,
