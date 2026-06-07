@@ -18,6 +18,7 @@ const productSchema = z.object({
 	wholesale_min_qty: z.number().nullable(),
 	product_type: z.string(),
 	category: z.string().nullable(),
+	icon: z.string().nullable(),
 	image_url: z.string().nullable(),
 	image_key: z.string().nullable(),
 	image_width: z.number().nullable(),
@@ -69,6 +70,7 @@ export const productsRouter = router({
 				category: z.string().optional(),
 				wholesale_price: z.number().int().optional(),
 				wholesale_min_qty: z.number().int().optional(),
+				icon: z.string().optional(),
 				image_url: z.string().optional(),
 				image_key: z.string().optional(),
 				image_width: z.number().int().optional(),
@@ -110,6 +112,7 @@ export const productsRouter = router({
 					track_stock: z.boolean().default(true),
 					product_type: productTypeSchema.default("product"),
 					category: z.string().optional(),
+					icon: z.string().optional(),
 				}),
 			),
 		)
@@ -165,6 +168,7 @@ export const productsRouter = router({
 								track_stock: item.track_stock,
 								product_type: item.product_type,
 								category: item.category,
+								icon: item.icon,
 							})
 							.where(
 								and(
@@ -182,6 +186,7 @@ export const productsRouter = router({
 							track_stock: item.track_stock,
 							product_type: item.product_type,
 							category: item.category,
+							icon: item.icon,
 							user_uid: ctx.user.id,
 						});
 					}
@@ -213,6 +218,7 @@ export const productsRouter = router({
 				category: z.string().optional(),
 				wholesale_price: z.number().int().optional(),
 				wholesale_min_qty: z.number().int().optional(),
+				icon: z.string().optional(),
 				image_url: z.string().optional(),
 				image_key: z.string().optional(),
 				image_width: z.number().int().optional(),

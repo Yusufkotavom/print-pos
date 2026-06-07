@@ -84,6 +84,7 @@ export const products = pgTable("products", {
 		.notNull(),
 	user_uid: varchar("user_uid", { length: 255 }).notNull(),
 	category: varchar("category", { length: 50 }),
+	icon: varchar("icon", { length: 50 }),
 	image_url: text("image_url"),
 	image_key: varchar("image_key", { length: 255 }),
 	image_width: integer("image_width"),

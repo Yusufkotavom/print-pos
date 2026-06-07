@@ -15,6 +15,7 @@ import {
 	PackageIcon,
 	SearchIcon,
 } from "lucide-react";
+import * as Icons from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { ComponentProps } from "react";
 import { formatCurrency } from "@/lib/utils";
@@ -24,6 +25,7 @@ type ProductItem = {
 	name: string;
 	price: number;
 	category?: string | null;
+	icon?: string | null;
 	image_url?: string | null;
 	in_stock: number;
 	track_stock: boolean;
@@ -133,6 +135,7 @@ export function POSProductCatalog({
 						className={`grid gap-3 ${viewMode === "grid" ? "grid-cols-2" : "grid-cols-1"}`}
 					>
 						{products.map((product) => {
+							const FallbackIcon = product.icon ? (Icons as any)[product.icon] || PackageIcon : PackageIcon;
 							const selectedProduct = selectedProducts.find(
 								(p) => p.id === product.id,
 							);
@@ -156,7 +159,7 @@ export function POSProductCatalog({
 													className="h-full w-full object-cover"
 												/>
 											) : (
-												<PackageIcon className="h-5 w-5 text-muted-foreground md:h-6 md:w-6" />
+												<FallbackIcon className="h-5 w-5 text-muted-foreground md:h-6 md:w-6" />
 											)}
 										</div>
 										<div className="min-w-0 flex-1">

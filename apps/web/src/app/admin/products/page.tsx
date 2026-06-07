@@ -39,6 +39,7 @@ import {
 } from "@finopenpos/ui/components/tabs";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import * as Icons from "lucide-react";
 import {
 	FilePenIcon,
 	FileUpIcon,
@@ -55,6 +56,7 @@ import { toast } from "sonner";
 import { z } from "zod/v4";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { FormattedNumberInput } from "@/components/formatted-number-input";
+import { IconPicker } from "@/components/icon-picker";
 import { useCrudMutation } from "@/hooks/use-crud-mutation";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import { useProductImageSync } from "@/hooks/use-product-image-sync";
@@ -140,6 +142,7 @@ export default function Products() {
 		track_stock: z.boolean(),
 		in_stock: z.number().int().min(0, t("stockMustBeNonNegative")),
 		category: z.string(),
+		icon: z.string().nullable(),
 		wholesale_price: z.number().min(0).nullable(),
 		wholesale_min_qty: z.number().int().min(1).nullable(),
 	});
@@ -163,8 +166,9 @@ export default function Products() {
 			key: "image_url",
 			header: "Gambar",
 			hideOnMobile: true,
-			render: (row) =>
-				row.image_url ? (
+			render: (row) => {
+				const FallbackIcon = row.icon ? (Icons as any)[row.icon] || Icons.ImageIcon : Icons.ImageIcon;
+				return row.image_url ? (
 					<Image
 						src={row.image_url}
 						alt={row.name}
@@ -175,9 +179,10 @@ export default function Products() {
 					/>
 				) : (
 					<div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
-						<ImageIcon className="h-4 w-4 text-muted-foreground" />
+						<FallbackIcon className="h-4 w-4 text-muted-foreground" />
 					</div>
-				),
+				);
+			},
 		},
 		{
 			key: "name",
@@ -290,6 +295,7 @@ export default function Products() {
 				payload.wholesale_min_qty ?? current?.wholesale_min_qty ?? null,
 			product_type: payload.product_type ?? current?.product_type ?? "product",
 			category: payload.category ?? current?.category ?? null,
+			icon: payload.icon ?? current?.icon ?? null,
 			image_url: payload.image_url ?? current?.image_url ?? null,
 			image_key: payload.image_key ?? current?.image_key ?? null,
 			image_width: payload.image_width ?? current?.image_width ?? null,
@@ -394,6 +400,7 @@ export default function Products() {
 			track_stock: true,
 			in_stock: 0,
 			category: "",
+			icon: null as string | null,
 			wholesale_price: null as number | null,
 			wholesale_min_qty: null as number | null,
 		},
@@ -414,6 +421,7 @@ export default function Products() {
 				track_stock: trackStock,
 				product_type: value.product_type,
 				category: value.category || undefined,
+				icon: value.icon || undefined,
 				wholesale_price:
 					value.wholesale_price != null
 						? Math.round(value.wholesale_price * 100)
@@ -523,6 +531,7 @@ export default function Products() {
 		form.setFieldValue("track_stock", p.track_stock);
 		form.setFieldValue("in_stock", p.in_stock);
 		form.setFieldValue("category", p.category ?? "");
+		form.setFieldValue("icon", p.icon ?? null);
 		form.setFieldValue(
 			"wholesale_price",
 			p.wholesale_price != null ? p.wholesale_price / 100 : null,
@@ -1029,6 +1038,18 @@ export default function Products() {
 											/>
 										</div>
 									</div>
+									<form.Field name="icon">
+										{(field) => (
+											<div className="flex flex-col gap-3 mt-4">
+												<Label>Atau Pilih Fallback Icon</Label>
+												<p className="text-muted-foreground text-xs">Ikon ini akan ditampilkan jika Anda tidak mengunggah gambar produk di atas.</p>
+												<IconPicker
+													value={field.state.value}
+													onChange={(v) => field.handleChange(v)}
+												/>
+											</div>
+										)}
+									</form.Field>
 								</div>
 							</TabsContent>
 
